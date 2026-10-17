@@ -1,7 +1,7 @@
 'use strict';
 
 // Debe ser la misma del servidor (server.js) y del programa de la placa: si no, se avisa arriba
-const VERSION_PAGINA = '2026-10-17.4';
+const VERSION_PAGINA = '2026-10-17.5';
 
 // Nombres de las clases: llegan del servidor (clases.json)
 let NOMBRE_CLASE = { error: 'Sin respuesta de la IA' };
@@ -686,13 +686,20 @@ function pintarPasos(n) {
       : '';
   // 4. Cámara
   let cam;
-  if (n.fase === 'tomando_referencia') cam = 'guardando la foto de la bandeja vacía: espera a que todo esté quieto y sin manos.';
+  if (n.fase === 'tomando_referencia') {
+    const mov = Number.isFinite(n.movPct) ? ` Movimiento ${n.movPct} % (la guarda con menos de ${n.movUmbral ?? 2} %).` : '';
+    const lleva = Number.isFinite(n.buscandoS) && n.buscandoS >= 6
+      ? ` Lleva ${n.buscandoS} s intentando: si la bandeja está vacía, toca "Guardar bandeja vacía ahora" y la guarda de una vez.`
+      : '';
+    cam = `guardando la foto de la bandeja vacía: espera a que todo esté quieto y sin manos.${mov}${lleva}`;
+  }
   else if (n.fase === 'bandeja_no_esta') cam = 'la bandeja no está a nivel: no se compara.';
   else if (!Number.isFinite(n.camPct)) cam = 'sin medida.';
   else {
     cam = `${n.camPct} % de la zona cambió; hay residuo desde ${n.umbral} % → ${siNo(n.camPct >= n.umbral)}. ` +
       `Quieto: ${n.movPct < 2 ? 'sí' : `no, se está moviendo (${n.movPct} %)`}. ` +
       `Brillo general corregido en ${n.corrimiento > 0 ? '+' : ''}${n.corrimiento}. ` +
+      (Number.isFinite(n.ruido) ? `Ruido de la cámara ${coma(n.ruido)} (un punto cuenta si cambia más de ${n.umbralPixel} en brillo o ${n.umbralBorde} en bordes). ` : '') +
       (n.camVe ? 'La cámara avisa que HAY residuo.' : n.camPct >= n.umbral ? 'Falta que se quede quieto 1 s.' : 'La cámara no ve nada.');
   }
   $('#dep-paso-cam span').textContent = cam;
@@ -702,8 +709,13 @@ function pintarPasos(n) {
   else if (!Number.isFinite(n.vacia) || n.vacia <= 0) ultra = `${coma(n.dist)} cm ahora; todavía no tiene la distancia de la bandeja vacía.`;
   else {
     const dif = n.vacia - n.dist;
-    ultra = `${coma(n.dist)} cm ahora, ${coma(n.vacia)} cm con la bandeja vacía: ${coma(dif)} cm más cerca; ` +
-      `hay residuo desde ${coma(n.ultraUmbral ?? 1.5)} cm → ${siNo(n.ultraVe)}.`;
+    ultra = dif >= 0
+      ? `${coma(n.dist)} cm ahora, ${coma(n.vacia)} cm con la bandeja vacía: ${coma(dif)} cm más cerca; ` +
+        `hay residuo desde ${coma(n.ultraUmbral ?? 1.5)} cm → ${siNo(n.ultraVe)}.`
+      : `${coma(n.dist)} cm ahora, ${coma(n.vacia)} cm con la bandeja vacía: mide ${coma(-dif)} cm MÁS LEJOS que la bandeja vacía. ` +
+        (dif < -2
+          ? 'Revisa que la bandeja esté horizontal (no caída a un lado) y que el sensor apunte derecho a la bandeja; luego toca "Guardar bandeja vacía ahora".'
+          : 'Es una variación pequeña.');
   }
   $('#dep-paso-ultra span').textContent = ultra;
   // 6. Resultado
