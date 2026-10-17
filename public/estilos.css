@@ -1256,78 +1256,6 @@ output {
   gap: 0.5rem;
 }
 
-/* Fallas y capturas */
-.fallas {
-  display: grid;
-  gap: 0.75rem;
-  margin-top: 2rem;
-  padding: 1.25rem;
-  border-radius: var(--radio-panel);
-  background: var(--superficie);
-}
-
-.fallas-intro {
-  max-width: 70ch;
-  color: var(--tinta-2);
-}
-
-.nota {
-  display: grid;
-  gap: 0.25rem;
-  max-width: 34rem;
-  font-size: 0.9375rem;
-  font-weight: 560;
-}
-
-.nota input {
-  min-height: 2.75rem;
-  padding: 0.5rem 0.75rem;
-  border: 2px solid var(--linea);
-  border-radius: var(--radio-boton);
-  background: #fff;
-  font-weight: 400;
-}
-
-.nota input:focus {
-  border-color: var(--tinta);
-  outline: none;
-}
-
-.fallas-botones {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-  gap: 0.5rem;
-}
-
-.fallas h3 {
-  margin-top: 0.75rem;
-}
-
-.capturas {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.capturas li {
-  display: grid;
-  grid-template-columns: 5rem minmax(0, 1fr);
-  gap: 0.75rem;
-  padding: 0.625rem 0;
-  border-top: 1px solid var(--linea);
-  font-size: 0.9375rem;
-}
-
-.capturas time {
-  color: var(--tinta-2);
-}
-
-.capturas small {
-  display: block;
-  color: var(--tinta-2);
-  font-size: 0.8125rem;
-}
-
 /* ---------------------------------------------------------------------------
    Análisis
    --------------------------------------------------------------------------- */
@@ -1969,13 +1897,6 @@ li[data-tipo='captura'] .historial-que strong::before {
     padding-inline: 0.5rem;
   }
 
-  .fallas {
-    padding: 1rem;
-  }
-
-  .fallas-botones {
-    grid-template-columns: 1fr;
-  }
 
   .barras li {
     grid-template-columns: minmax(5rem, 7.5rem) minmax(0, 1fr) 2rem 2.5rem;
@@ -1999,6 +1920,245 @@ li[data-tipo='captura'] .historial-que strong::before {
 @media (max-width: 380px) {
   .grupo-botones .boton {
     font-size: 0.875rem;
+  }
+}
+
+/* Calibrar: resultado de la calibración con la bandeja vacía */
+.paso h4 {
+  margin-top: 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.paso h4 + .regla {
+  margin-top: 1.375rem;
+}
+
+.cal-resultado {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.625rem;
+  border-radius: 10px;
+  background: var(--superficie-2);
+  font-size: 0.875rem;
+}
+
+.cal-resultado img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  background: var(--oscuro);
+  object-fit: cover;
+  cursor: zoom-in;
+}
+
+.cal-resultado img[hidden] + div {
+  grid-column: 1 / -1;
+}
+
+.cal-resultado .boton-texto {
+  margin-top: 0.25rem;
+  text-align: left;
+}
+
+/* Historial: revisar si acertó */
+.historial-cabeza {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+#panel-historial .historial-cabeza h2 {
+  margin-bottom: 0.25rem;
+}
+
+.historial-resumen {
+  color: var(--tinta-2);
+  font-size: 0.9375rem;
+}
+
+#historial-bloqueo {
+  margin-bottom: 1rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  font-size: 0.8125rem;
+  font-weight: 620;
+}
+
+.chip[data-tipo='ok'] {
+  background: var(--verde-suave);
+  color: var(--verde);
+}
+
+.chip[data-tipo='mal'] {
+  background: var(--rojo-suave);
+  color: var(--rojo);
+}
+
+.revisar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.5rem;
+  margin-top: 0.375rem;
+}
+
+.revisar-pregunta {
+  font-size: 0.875rem;
+  font-weight: 620;
+}
+
+.revisar .boton-chico {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.revisar .boton-si:hover:not(:disabled) {
+  border-color: var(--verde);
+  background: var(--verde-suave);
+}
+
+.revisar .boton-no:hover:not(:disabled) {
+  border-color: var(--rojo);
+  background: var(--rojo-suave);
+}
+
+.revisar .boton-texto {
+  font-size: 0.875rem;
+}
+
+li[data-tipo='vacio'] .historial-que strong {
+  color: var(--tinta-2);
+}
+
+/* Análisis: qué tan bien decide */
+.precision {
+  display: grid;
+  gap: 0.875rem;
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border-radius: var(--radio-panel);
+  background: var(--superficie);
+}
+
+.precision-cifra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.precision-cifra h3 {
+  flex-basis: 100%;
+  margin-bottom: 0.25rem;
+}
+
+.precision-cifra b {
+  font-size: clamp(2.5rem, 7vw, 3.5rem);
+  font-weight: 760;
+  font-stretch: 72%;
+  line-height: 0.9;
+}
+
+.precision-barra {
+  display: flex;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  overflow: hidden;
+}
+
+.seg-mal {
+  background: var(--rojo);
+}
+
+.cifras-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 0;
+  border: 1px solid var(--linea);
+}
+
+.cifras small {
+  display: block;
+  margin-top: 0.125rem;
+  color: var(--tinta-2);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+.precision-detalle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.5rem;
+}
+
+.precision-detalle h4 {
+  font-size: 0.9375rem;
+}
+
+.precision-detalle .barras li {
+  grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr) 2.75rem 2.75rem;
+}
+
+.errores {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0.875rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9375rem;
+}
+
+.errores b {
+  margin-right: 0.375rem;
+  color: var(--rojo);
+}
+
+@media (max-width: 900px) {
+  .cifras-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .precision-detalle {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .cal-resultado {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+  }
+
+  .historial-cabeza .boton {
+    width: 100%;
+  }
+
+  .precision {
+    padding: 1rem;
+  }
+
+  .precision-detalle .barras li {
+    grid-template-columns: minmax(6rem, 8.5rem) minmax(0, 1fr) 2.5rem 2.5rem;
   }
 }
 

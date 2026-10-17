@@ -1,5 +1,5 @@
 {
-  "_ayuda": "Tabla de clases que reconoce la caneca. id: lo que responde la IA (minúsculas, sin tildes, máx. 15 letras). caneca: blanca (aprovechables), verde (orgánicos), negra (no aprovechables), especial (pilas, electrónicos, medicamentos) o ninguna (bandeja vacía). ejemplos: lo que se le explica a la IA. Puedes agregar, quitar o mover clases aquí sin tocar el código.",
+  "_ayuda": "Tabla de clases que reconoce la caneca. id: lo que responde la IA (minúsculas, sin tildes, máx. 15 letras). caneca: blanca (aprovechables), verde (orgánicos), negra (no aprovechables), especial (pilas, electrónicos, medicamentos) o ninguna (bandeja vacía o una mano: la bandeja no se mueve). ejemplos: lo que se le explica a la IA. Puedes agregar, quitar o mover clases aquí sin tocar el código.",
   "clases": [
     { "id": "carton", "nombre": "Cartón", "caneca": "blanca", "ejemplos": "cajas, cartón corrugado, tubos de papel higiénico; limpio y seco" },
     { "id": "papel", "nombre": "Papel", "caneca": "blanca", "ejemplos": "hojas, cuadernos, periódico, revistas, sobres, facturas; limpio y seco" },
@@ -18,7 +18,8 @@
     { "id": "pilas", "nombre": "Pilas", "caneca": "especial", "ejemplos": "pilas y baterías" },
     { "id": "electronico", "nombre": "Electrónico", "caneca": "especial", "ejemplos": "celulares, cargadores, cables, audífonos, bombillos" },
     { "id": "medicamento", "nombre": "Medicamento", "caneca": "especial", "ejemplos": "pastillas, blísteres con pastillas, jarabes, jeringas" },
-    { "id": "vacio", "nombre": "Bandeja vacía", "caneca": "ninguna", "ejemplos": "la bandeja sin nada encima" },
+    { "id": "vacio", "nombre": "Bandeja vacía", "caneca": "ninguna", "ejemplos": "la bandeja sin ningún objeto encima (aunque tenga manchas, sombras, reflejos o sus marcas de siempre)" },
+    { "id": "mano", "nombre": "Mano", "caneca": "ninguna", "ejemplos": "una mano, dedos o un brazo sobre la bandeja, aunque sostengan algo" },
     { "id": "otro", "nombre": "Otro", "caneca": "negra", "ejemplos": "cualquier cosa que no encaje en las demás o que no se vea bien" }
   ]
 }

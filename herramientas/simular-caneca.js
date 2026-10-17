@@ -3,7 +3,9 @@
 //       node herramientas/simular-caneca.js wss://tu-dominio.com
 // Manda la foto herramientas/bandeja.jpg como si fuera la cámara, simula un residuo
 // cada 15 s, responde a los botones del monitor igual que la placa y, si alguien abre
-// "Depuración paso a paso", manda miniaturas inventadas (bandeja vacía, ahora y qué cambió).
+// Calibrar, manda miniaturas inventadas (bandeja vacía, ahora y qué cambió). Como la placa 2026-10-17.6:
+// si la IA dice "mano" no se mueve, si dice "vacio" retoma la bandeja vacía, después de inclinar avisa si
+// el residuo cayó, y "Calibrar con la bandeja vacía" manda las medidas y una foto de referencia.
 'use strict';
 
 const fs = require('fs');
@@ -11,7 +13,7 @@ const path = require('path');
 require('dotenv').config({ quiet: true, path: path.join(__dirname, '..', '.env') });
 const WebSocket = require('ws');
 
-const VERSION = '2026-10-17.5'; // la del programa de la placa
+const VERSION = '2026-10-17.6'; // la del programa de la placa
 const base = (process.argv[2] || `ws://localhost:${process.env.PORT || process.env.PUERTO || 3000}`).replace(/\/$/, '');
 const token = encodeURIComponent(process.env.TOKEN_DISPOSITIVO || '');
 const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));
@@ -19,7 +21,7 @@ const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));
 // aprovechables = lado del 180 (150°), no aprovechables = lado del 0 (30°)
 const placa = {
   stream: false, depurar: false, servo: 90, pausa: false, flash: false, ultra: false, vaciar: null,
-  umbralCamara: 3, zona: { x0: 18, x1: 78, y0: 4, y1: 62 }, refDesde: Date.now(),
+  umbralCamara: 3, zona: { x0: 18, x1: 78, y0: 4, y1: 62 }, refDesde: Date.now(), ultraUmbral: 1.5, mano: false,
 };
 const ws = new WebSocket(`${base}/ws/esp?token=${token}`);
 
@@ -32,10 +34,10 @@ function mandarFoto(tipo) {
 
 function mandarEstado() {
   const { ultra, pausa, flash, servo, vaciar } = placa;
-  const dist = ultra ? 15.2 : 18.9;
+  const dist = ultra ? 20.1 : 23.7;
   const camPct = ultra ? 9 : 1; // % de la bandeja distinto a la foto de la bandeja vacía
   ws.send(JSON.stringify({
-    t: 'estado', ultra, dist, vacia: 18.9, ultraUmbral: 1.5, cam: ultra, camPct, atascado: false, esperando: false,
+    t: 'estado', ultra, dist, vacia: 23.7, ultraUmbral: placa.ultraUmbral, cam: ultra, camPct, atascado: false, esperando: false, mano: placa.mano,
     pausa, flash, servo, vaciar: Boolean(vaciar), vaciarLado: vaciar, rssi: -58, ip: '192.168.1.50', fw: VERSION, modo: 'online',
   }));
 }
@@ -70,7 +72,7 @@ function mandarDepuracion() {
   ws.send(JSON.stringify({
     t: 'depuracion', fase: 'comparando', camPct, movPct: 0, umbral: placa.umbralCamara, corrimiento: 2,
     camVe: camPct >= placa.umbralCamara, refLista: true, refEdadS: Math.round((Date.now() - placa.refDesde) / 1000),
-    dist: placa.ultra ? 15.2 : 18.9, vacia: 18.9, ultraUmbral: 1.5, ultraVe: placa.ultra,
+    dist: placa.ultra ? 20.1 : 23.7, vacia: 23.7, ultraUmbral: placa.ultraUmbral, ultraVe: placa.ultra, mano: placa.mano,
     esperando: false, atascado: false, pausa: placa.pausa, vaciar: Boolean(placa.vaciar), servo: placa.servo,
   }));
   ws.send(Buffer.concat([Buffer.from([0x44, w, h, zx0, zx1, zy0, zy1]), ref, cur, marcas]));
@@ -86,6 +88,9 @@ function inclinar(lado, origen) {
     placa.ultra = false;
     placa.refDesde = Date.now();
     mandarEstado();
+    // como la placa: después de inclinar revisa si el residuo cayó (casi siempre sí)
+    const cayo = Math.random() > 0.15;
+    ws.send(JSON.stringify({ t: 'caida', cayo, intentos: cayo ? 1 : 2 }));
   }, 1500);
 }
 
@@ -117,11 +122,25 @@ ws.on('message', (data, esBinario) => {
     console.log(`Depuración: ${m.activo ? 'activada' : 'detenida'}`);
   } else if (m.t === 'resultado') {
     console.log(`La IA dijo: ${m.clase}; la bandeja va a ${m.lado}`);
-    inclinar(m.lado, null);
+    if (m.clase === 'mano') {
+      // no se mueve; la "mano" se va a los 3 s
+      placa.mano = true;
+      mandarEstado();
+      setTimeout(() => {
+        placa.mano = false;
+        placa.ultra = false;
+        mandarEstado();
+      }, 3000);
+    } else if (m.lado === 'nivel') {
+      placa.ultra = false; // vacía: retoma la bandeja vacía
+      placa.refDesde = Date.now();
+      mandarEstado();
+    } else inclinar(m.lado, null);
   } else if (m.t === 'ajustes') {
     placa.umbralCamara = m.umbralCamara;
     placa.zona = m.zona;
-    console.log(`Ajustes: cámara desde ${m.umbralCamara} %, zona ${JSON.stringify(m.zona)}`);
+    if (Number.isFinite(m.ultraUmbral)) placa.ultraUmbral = m.ultraUmbral;
+    console.log(`Ajustes: cámara desde ${m.umbralCamara} %, ultrasónico desde ${placa.ultraUmbral} cm, zona ${JSON.stringify(m.zona)}`);
   } else if (m.t === 'orden') {
     console.log(`Orden del monitor: ${m.a}`);
     if (['aprovechables', 'no_aprovechables', 'nivel', 'clasificar'].includes(m.a)) placa.vaciar = null;
@@ -133,7 +152,14 @@ ws.on('message', (data, esBinario) => {
     else if (m.a === 'flash') placa.flash = !placa.flash;
     else if (m.a === 'pausa') placa.pausa = true;
     else if (m.a === 'reanudar') placa.pausa = false;
-    else if (m.a === 'referencia') placa.refDesde = Date.now();
+    else if (m.a === 'referencia' || m.a === 'calibrar') {
+      placa.refDesde = Date.now();
+      placa.ultra = false;
+      setTimeout(() => {
+        ws.send(JSON.stringify({ t: 'calibracion', vacia: 23.7, desv: 0.04, validas: 20, medidas: 20, camara: true, foto: true }));
+        mandarFoto('R');
+      }, 1600);
+    }
     else if (m.a === 'clasificar') mandarFoto('B');
     mandarEstado();
   }

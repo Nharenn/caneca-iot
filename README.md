@@ -3,15 +3,20 @@
 Servidor en Node.js de la caneca clasificadora: recibe la cámara de la ESP32-CAM por WebSocket, le pregunta a
 Gemini qué residuo es, le dice a la caneca a qué lado inclinar la bandeja y sirve el monitor en línea.
 
+**Quién decide:** la cámara y el ultrasónico solo avisan que llegó algo. La IA decide: aprovechables, no
+aprovechables, o nada si ve **una mano** o la **bandeja vacía** (la bandeja no se mueve). Compara con una foto de la
+bandeja vacía que se toma al calibrar, y piensa lo mínimo (`thinkingLevel: minimal`) para contestar rápido.
+
 - **Monitor** en cuatro pestañas (arriba en el PC, abajo en el celular): **En vivo** (cámara, botones de cada lado y
   sensores con medidores), **Calibrar**, **Análisis** e **Historial** con la foto de cada clasificación.
 - **Control:** todos miran; con el PIN maneja **una sola persona**. Si otra pone el PIN queda en fila y el control
   le pasa cuando la primera toca "Terminar", cierra la página o lleva 3 minutos sin tocar nada mientras alguien espera.
   Cuando un botón está bloqueado, la página dice por qué.
-- **Calibrar:** bandeja vacía guardada, lo que ve ahora y qué cambió, en 4 pasos (bandeja vacía, zona, sensibilidad,
-  qué decide). La zona se arrastra en la imagen y la sensibilidad se prueba con una regla: todo se ve al instante y la
-  caneca lo usa al tocar **Guardar en la caneca** (necesita el control). Se guardan capturas ("No lo detectó",
-  "Detectó algo con la bandeja vacía", "Lo clasificó mal") para revisarlas después.
+- **Calibrar:** la imagen en color con el cuadro amarillo (la zona que se revisa, se arrastra), **Calibrar con la
+  bandeja vacía** (20 medidas del ultrasónico, imagen de la cámara y foto con flash para la IA), y cuándo avisan la
+  cámara (%) y el ultrasónico (cm). Todo se ve al instante y la caneca lo usa al tocar **Guardar en la caneca**.
+- **Historial:** en cada clasificación, **¿Acertó? Sí / No** (y qué era: aprovechable, no aprovechable, una mano o
+  vacía), si el residuo **cayó**, y "Puse algo y no lo detectó". **Análisis** saca de ahí el % de acierto y de error.
 - **Lados:** aprovechables = 150° (lado del 180), no aprovechables = 30° (lado del 0). Vaciar va por separado a cada lado.
 
 > El archivo `.env` con la clave de Gemini **no está en este repositorio** (y no debe subirse nunca).
@@ -80,5 +85,7 @@ node herramientas/simular-caneca.js   # (otra terminal) una caneca de mentira, s
 
 El CDN de Hostinger guarda `app.js` y `estilos.css`; por eso el servidor arma la página con `?v=<huella>` en esas dos direcciones y cada cambio llega al navegador sin quedarse con la versión vieja.
 
-Los datos (conteos, historial, fotos y capturas) se guardan en `datos/`; en el hosting pueden borrarse al volver a desplegar.
-La página y el servidor llevan la misma versión (`2026-10-17.7`). El programa de la placa va por su cuenta (`2026-10-17.5`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
+Los datos (conteos, historial, revisiones, fotos y capturas) se guardan, en el hosting, en `~/caneca-datos` (fuera de
+la carpeta del programa, para que no se borren al volver a desplegar; `/api/salud` dice `"fueraDelPrograma": true`).
+En el Mac quedan en `datos/`. La variable `DIR_DATOS` cambia la carpeta.
+La página y el servidor llevan la misma versión (`2026-10-17.8`). El programa de la placa va por su cuenta (`2026-10-17.6`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.

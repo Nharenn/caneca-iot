@@ -161,8 +161,8 @@
     <!-- ===================== Calibrar ===================== -->
     <section class="panel" id="panel-calibrar" role="tabpanel" aria-labelledby="tab-calibrar" hidden>
       <div class="cal-cabeza">
-        <h2>Calibrar la detección</h2>
-        <p class="cal-intro">La cámara compara cada imagen con una foto de la bandeja vacía. Si dentro del rectángulo amarillo cambió más del porcentaje que elijas, cree que hay un residuo. Lo que muevas aquí se ve al instante en la imagen; la caneca lo empieza a usar cuando tocas <b>Guardar en la caneca</b>.</p>
+        <h2>Calibrar</h2>
+        <p class="cal-intro">La cámara y el ultrasónico solo avisan que llegó algo; la que decide es la IA: aprovechables, no aprovechables, o nada si es una mano o la bandeja está vacía. Aquí le dices a la caneca cómo es su bandeja vacía y dónde mirar. Lo que muevas se ve al instante; la caneca lo usa al tocar <b>Guardar en la caneca</b>.</p>
         <p class="nota-alerta" id="cal-aviso-fw" hidden></p>
         <ul class="cal-estado" aria-label="Estado de la calibración">
           <li id="ce-imagen" data-ok="no">Imagen: <b>sin imagen</b></li>
@@ -179,34 +179,42 @@
       <div class="cal">
         <div class="cal-vista">
           <div class="lienzo" id="lienzo">
-            <canvas id="dep-grande" width="640" height="480" role="img" aria-label="Qué cambió en la bandeja, con la zona que se revisa"></canvas>
+            <canvas id="dep-grande" width="640" height="480" role="img" aria-label="Imagen de la cámara en color, con la zona que se revisa"></canvas>
             <div class="lienzo-vacio" id="lienzo-vacio"><p id="lienzo-vacio-texto">Pidiendo las imágenes a la caneca…</p></div>
             <p class="lienzo-fuente" id="dep-fuente">Sin imagen</p>
             <button type="button" class="lienzo-mover" id="btn-mover-zona" aria-pressed="false">Mover la zona con el dedo</button>
           </div>
           <div class="vistas" role="group" aria-label="Qué imagen ver en grande">
-            <button type="button" class="vista" data-vista="dif" aria-pressed="true"><canvas id="dep-dif" width="160" height="120"></canvas><span>Qué cambió</span></button>
-            <button type="button" class="vista" data-vista="cur" aria-pressed="false"><canvas id="dep-cur" width="160" height="120"></canvas><span>Lo que ve ahora</span></button>
+            <button type="button" class="vista" data-vista="color" aria-pressed="true"><canvas id="dep-color" width="160" height="120"></canvas><span>En color</span></button>
+            <button type="button" class="vista" data-vista="dif" aria-pressed="false"><canvas id="dep-dif" width="160" height="120"></canvas><span>Qué cambió</span></button>
             <button type="button" class="vista" data-vista="ref" aria-pressed="false"><canvas id="dep-ref" width="160" height="120"></canvas><span>Bandeja vacía</span></button>
-            <button type="button" class="vista" data-vista="foto" aria-pressed="false" id="vista-foto" hidden><img id="dep-foto" alt=""><span>Foto en color</span></button>
+            <button type="button" class="vista" data-vista="cur" aria-pressed="false"><canvas id="dep-cur" width="160" height="120"></canvas><span>En gris</span></button>
+            <button type="button" class="vista" data-vista="foto" aria-pressed="false" id="vista-foto" hidden><img id="dep-foto" alt=""><span>Foto de la captura</span></button>
           </div>
           <div class="vista-pie">
-            <p class="leyenda"><span><i class="m m-brillo"></i>cambió el brillo</span><span><i class="m m-borde"></i>cambió un borde</span><span><i class="m m-zona"></i>zona que se revisa</span></p>
+            <p class="leyenda" id="leyenda"><span><i class="m m-zona"></i>zona que se revisa: lo de afuera no cuenta</span></p>
             <button type="button" class="boton boton-chico" id="dep-congelar">Congelar imagen</button>
           </div>
         </div>
 
         <ol class="pasos">
           <li class="paso" id="paso-ref">
-            <h3>Bandeja vacía</h3>
-            <p>Es la foto con la que se compara todo. Guárdala con la bandeja vacía, quieta y sin manos; repítelo si cambió la luz o moviste la caneca.</p>
+            <h3>Calibrar con la bandeja vacía</h3>
+            <p>Deja la bandeja vacía, a nivel y sin manos, y toca el botón. La caneca mide la distancia del ultrasónico 20 veces, guarda la imagen de la bandeja vacía y le manda a la IA una foto con flash para que compare. Repítelo si cambia la luz, mueves la caneca o cambias un sensor.</p>
+            <button type="button" class="boton boton-principal" data-orden="calibrar" id="btn-calibrar">Calibrar con la bandeja vacía</button>
+            <div class="cal-resultado" id="cal-resultado" hidden>
+              <img id="cal-ref-img" alt="Foto de la bandeja vacía que usa la IA">
+              <div>
+                <p id="cal-resultado-texto"></p>
+                <button type="button" class="boton-texto" id="btn-usar-sugerido" hidden></button>
+              </div>
+            </div>
             <p class="paso-estado" id="dep-ref-estado">Sin datos</p>
-            <button type="button" class="boton" data-orden="referencia">Guardar bandeja vacía ahora</button>
           </li>
 
           <li class="paso" id="paso-zona">
             <h3>Zona que se revisa</h3>
-            <p>Solo cuenta lo que queda dentro del rectángulo amarillo. Que cubra la bandeja y nada más: sin paredes ni la prensa. Arrastra sus bordes en la imagen o mueve las barras.</p>
+            <p>Solo cuenta lo que queda dentro del cuadro amarillo. Que cubra la bandeja y nada más: sin paredes ni la prensa. Arrastra sus bordes sobre la imagen en color o mueve las barras.</p>
             <div class="deslizadores">
               <label><span>Borde izquierdo</span><output id="o-x0" for="zona-x0">—</output><input type="range" id="zona-x0" min="0" max="100" step="1"></label>
               <label><span>Borde derecho</span><output id="o-x1" for="zona-x1">—</output><input type="range" id="zona-x1" min="0" max="100" step="1"></label>
@@ -217,9 +225,10 @@
           </li>
 
           <li class="paso" id="paso-sens">
-            <h3>Sensibilidad</h3>
-            <p>La raya negra marca desde cuánto cambio hay residuo. Con la bandeja vacía la barra debe quedarse antes de la raya; con un papel encima, pasarla.</p>
-            <div class="regla" aria-hidden="true">
+            <h3>Cuándo avisan los sensores</h3>
+            <p>La barra es cuánto cambió ahora y la raya negra, desde dónde avisa. Con la bandeja vacía la barra debe quedarse antes de la raya; con un residuo, pasarla. Mejor que avisen de más que de menos: si avisan sin residuo, la IA dice "vacía" y la bandeja no se mueve.</p>
+            <h4>Cámara</h4>
+            <div class="regla" id="regla-cam" aria-hidden="true">
               <span class="regla-relleno" id="cal-relleno"></span>
               <span class="regla-max" id="cal-max"></span>
               <span class="regla-raya" id="cal-raya"><span id="cal-raya-texto">3 %</span></span>
@@ -227,14 +236,26 @@
             <p class="regla-escala"><span>0 %</span><span id="cal-escala">15 %</span></p>
             <p class="regla-texto"><b id="cal-ahora">—</b> <span id="cal-max-texto">Esperando datos de la cámara</span></p>
             <label class="deslizador-sens">
-              <span>Hay residuo desde</span><output id="o-umbral" for="umbral-cam">—</output>
+              <span>Avisa desde</span><output id="o-umbral" for="umbral-cam">—</output>
               <input type="range" id="umbral-cam" min="1" max="30" step="1">
             </label>
             <p class="paso-estado" id="cal-veredicto">Sin datos</p>
+            <h4>Ultrasónico</h4>
+            <div class="regla" id="regla-ultra" aria-hidden="true">
+              <span class="regla-relleno" id="ul-relleno"></span>
+              <span class="regla-raya" id="ul-raya"><span id="ul-raya-texto">1,5 cm</span></span>
+            </div>
+            <p class="regla-escala"><span>0 cm</span><span id="ul-escala">5 cm</span></p>
+            <p class="regla-texto"><b id="ul-ahora">—</b> <span id="ul-texto">Esperando datos del ultrasónico</span></p>
+            <label class="deslizador-sens">
+              <span>Avisa si algo está más cerca que la bandeja vacía en</span><output id="o-ultra" for="umbral-ultra">—</output>
+              <input type="range" id="umbral-ultra" min="0.5" max="5" step="0.1">
+            </label>
+            <p class="paso-estado" id="ul-veredicto">Sin datos</p>
           </li>
 
           <li class="paso" id="paso-res">
-            <h3>Qué decide la caneca</h3>
+            <h3>Qué hace la caneca ahora</h3>
             <dl class="resultado">
               <div id="dep-paso-cam"><dt>Cámara</dt><dd>Sin datos</dd></div>
               <div id="dep-paso-ultra"><dt>Ultrasónico</dt><dd>Sin datos</dd></div>
@@ -255,24 +276,6 @@
           <button type="button" class="boton boton-principal" id="btn-ajustes" disabled>Guardar en la caneca</button>
         </div>
       </div>
-
-      <section class="fallas" aria-labelledby="titulo-fallas">
-        <h2 id="titulo-fallas">Cuando algo falle, guárdalo</h2>
-        <p class="fallas-intro">Se guarda lo que ve la caneca en ese momento (las tres imágenes y los números) para revisarlo después con calma.</p>
-        <p class="bloqueo" id="fallas-bloqueo" hidden></p>
-        <label class="nota">Qué había en la bandeja (opcional)
-          <input id="dep-nota" maxlength="200" placeholder="por ejemplo: hoja de cuaderno arrugada">
-        </label>
-        <div class="fallas-botones">
-          <button type="button" class="boton boton-principal dep-captura" data-tipo="no_detecto" data-clasificar="1">No lo detectó: guardar y clasificar</button>
-          <button type="button" class="boton dep-captura" data-tipo="falsa">Detectó algo con la bandeja vacía</button>
-          <button type="button" class="boton dep-captura" data-tipo="mal_clasificado">Lo clasificó mal</button>
-          <button type="button" class="boton dep-captura" data-tipo="otra">Solo guardar</button>
-        </div>
-        <h3>Capturas guardadas</h3>
-        <ol class="capturas" id="dep-capturas"></ol>
-        <p class="vacio" id="dep-capturas-vacio">Todavía no hay capturas. Cuando la caneca no detecte algo o lo clasifique mal, toca uno de los botones de arriba y queda aquí para revisarlo.</p>
-      </section>
     </section>
 
     <!-- ===================== Análisis ===================== -->
@@ -297,6 +300,36 @@
           <span><i class="punto punto-no"></i>No aprovechables <b id="n-no">0</b></span>
         </div>
       </div>
+
+      <section class="precision" aria-labelledby="titulo-precision">
+        <div class="precision-cifra">
+          <h3 id="titulo-precision">Qué tan bien decide</h3>
+          <b id="p-acierto">—</b>
+          <span class="tasa-nombre" id="p-nombre">de las clasificaciones revisadas hicieron lo correcto</span>
+          <span class="tasa-sub" id="p-sub">Marca en el Historial si cada clasificación acertó y aquí sale el porcentaje de error.</span>
+        </div>
+        <div class="precision-barra" id="p-barra" role="img" aria-label="Aciertos y errores">
+          <span class="seg seg-si" id="p-seg-ok" style="width:0%"></span>
+          <span class="seg seg-mal" id="p-seg-mal" style="width:0%"></span>
+        </div>
+        <dl class="cifras cifras-5">
+          <div><dt>Revisadas</dt><dd id="p-revisadas">0</dd></div>
+          <div><dt>Sin revisar</dt><dd id="p-sinrevisar">0</dd></div>
+          <div><dt>Avisos sin residuo</dt><dd id="p-falsos">0</dd><small id="p-falsos-sub">manos 0, vacía 0</small></div>
+          <div><dt>El residuo cayó</dt><dd id="p-cayo">—</dd><small id="p-cayo-sub">sin datos</small></div>
+          <div><dt>No lo detectó</dt><dd id="p-nodetecto">0</dd><small>avisado desde el Historial</small></div>
+        </dl>
+        <div class="precision-detalle">
+          <div>
+            <h4>Acierto según lo que dijo la IA</h4>
+            <ol class="barras" id="p-pordijo"></ol>
+          </div>
+          <div>
+            <h4>Errores más comunes</h4>
+            <ol class="errores" id="p-errores"></ol>
+          </div>
+        </div>
+      </section>
 
       <dl class="cifras">
         <div><dt>Residuos clasificados</dt><dd id="k-total">0</dd></div>
@@ -325,7 +358,14 @@
 
     <!-- ===================== Historial ===================== -->
     <section class="panel" id="panel-historial" role="tabpanel" aria-labelledby="tab-historial" hidden>
-      <h2>Historial</h2>
+      <div class="historial-cabeza">
+        <div>
+          <h2>Historial</h2>
+          <p class="historial-resumen" id="historial-resumen">Toca Sí o No en cada clasificación para decir si la caneca acertó.</p>
+        </div>
+        <button type="button" class="boton" id="btn-no-detecto" title="Anota que no lo detectó y manda la foto a la IA">Puse algo y no lo detectó</button>
+      </div>
+      <p class="bloqueo" id="historial-bloqueo" hidden></p>
       <ol class="historial-lista" id="historial"></ol>
       <p class="vacio" id="historial-vacio">Cuando la caneca clasifique algo o se mueva la bandeja, aparece aquí con la foto.</p>
     </section>

@@ -1,9 +1,9 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.7';
+const VERSION_PAGINA = '2026-10-17.8';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
-const FIRMWARE_ESPERADO = '2026-10-17.5';
+const FIRMWARE_ESPERADO = '2026-10-17.6';
 // Zona sugerida para la caja de MDF (en % de la imagen)
 const ZONA_SUGERIDA = { x0: 22, x1: 74, y0: 7, y1: 60 };
 
@@ -38,6 +38,9 @@ const app = {
   eventos: [],
   umbralCamara: null,
   zona: null,
+  ultraUmbral: null,
+  calibracion: null, // la última calibración con la bandeja vacía
+  referencia: null, // fecha de la foto de la bandeja vacía que usa la IA
   // Quién maneja: 'mirando' (solo ver), 'espera' (en la fila, con PIN) o 'tuyo' (tienes el control)
   control: { estado: 'mirando', puesto: 0, ocupado: false, enFila: 0, mirando: 0 },
   lados: { blanca: 'aprovechables', verde: 'no_aprovechables', negra: 'no_aprovechables', especial: 'no_aprovechables', ninguna: 'nivel' },
@@ -125,7 +128,9 @@ function manejar(m) {
         app.clases = m.clases;
         NOMBRE_CLASE = { error: 'Sin respuesta de la IA', ...Object.fromEntries(m.clases.map((c) => [c.id, c.nombre])) };
       }
-      recibirAjustes(m.umbralCamara ?? app.umbralCamara, m.zona || app.zona);
+      app.calibracion = m.calibracion || null;
+      app.referencia = m.referencia || null;
+      recibirAjustes(m.umbralCamara ?? app.umbralCamara, m.zona || app.zona, m.ultraUmbral ?? app.ultraUmbral);
       pintarTodo();
       break;
     }
@@ -147,7 +152,7 @@ function manejar(m) {
       pintarUltima();
       break;
     case 'ajustes':
-      recibirAjustes(m.umbralCamara, m.zona);
+      recibirAjustes(m.umbralCamara, m.zona, m.ultraUmbral ?? app.ultraUmbral);
       cal.historia = []; // los % cambian con la zona nueva
       pintarEstado();
       pintarCal();
@@ -164,8 +169,27 @@ function manejar(m) {
       break;
     case 'capturas':
       app.capturas = m.lista || [];
-      pintarCapturas();
       break;
+    case 'calibracion':
+      app.calibracion = m.calibracion;
+      app.distancias = [];
+      dep.calibrando = 0;
+      pintarCal();
+      avisar('Calibración lista: la caneca ya conoce su bandeja vacía.', 'ok');
+      break;
+    case 'referencia':
+      app.referencia = m.fecha;
+      pintarCal();
+      break;
+    case 'eventoActualizado': {
+      // una clasificación que revisaron, o que ya se sabe si cayó
+      const i = app.eventos.findIndex((e) => e.id === m.evento.id);
+      if (i >= 0) app.eventos[i] = m.evento;
+      if (m.estadisticas) app.estadisticas = m.estadisticas;
+      pintarHistorial();
+      pintarPrecision();
+      break;
+    }
     case 'ok':
       avisar(m.msg, 'ok');
       break;
@@ -271,6 +295,10 @@ function mostrarImagen(buffer) {
   const img = $('#camara-img');
   img.onload = () => {
     if (anterior) URL.revokeObjectURL(anterior);
+    if (panelActual === 'calibrar' && !dep.viendoCaptura) {
+      pintarColorMini();
+      if (dep.vista === 'color' && !dep.congelado) pintarGrande();
+    }
   };
   img.src = url;
   app.urlImagen = url;
@@ -307,7 +335,6 @@ function pintarTodo() {
   pintarHistorial();
   pintarUltima();
   pintarCal();
-  pintarCapturas();
 }
 
 // Página y servidor de versiones distintas = casi siempre un servidor viejo que sigue prendido
@@ -361,18 +388,21 @@ function pintarConexion() {
   }
   $('#conexion-texto').textContent = texto;
   // Los botones solo funcionan para quien tiene el control (y con la caneca conectada)
-  for (const boton of $$('[data-orden]')) boton.disabled = !app.online || !manejo();
-  for (const boton of $$('.dep-captura')) boton.disabled = !manejo();
+  for (const boton of $$('[data-orden]')) boton.disabled = !app.online || !manejo() || (boton.dataset.orden === 'calibrar' && Boolean(dep.calibrando));
+  $('#btn-no-detecto').disabled = !app.online || !manejo();
   $('#btn-reiniciar').disabled = !manejo();
   $('#control').hidden = !app.servidor;
 
   const motivo = motivoBloqueo();
   $('#bloqueo').hidden = !motivo;
   $('#bloqueo').textContent = motivo || '';
-  const motivoFallas = motivoBloqueo({ necesitaCaneca: false });
-  $('#fallas-bloqueo').hidden = !motivoFallas;
-  $('#fallas-bloqueo').textContent = motivoFallas ? motivoFallas.replace('los botones', 'estos botones') : '';
+  const motivoHistorial = manejo() ? null : motivoBloqueo({ necesitaCaneca: false });
+  $('#historial-bloqueo').hidden = !motivoHistorial;
+  $('#historial-bloqueo').textContent = motivoHistorial
+    ? motivoHistorial.replace('para usar los botones', 'para marcar si la caneca acertó').replace('los botones', 'los botones para marcar')
+    : '';
   pintarGuardar();
+  if (app.eventos.length) pintarHistorial(); // los botones de revisar dependen del control
 }
 
 function pintarControl() {
@@ -445,10 +475,11 @@ function textoDeteccion(e) {
   if (e.atascado) return ['El residuo no cayó', 'Sácalo a mano o toca Nivelar.'];
   if (e.vaciar) return ['Modo vaciar', `La bandeja está de canto hacia ${NOMBRE_VACIAR[e.vaciarLado] || 'un lado'}. Toca Nivelar al terminar.`];
   if (e.pausa) return ['En pausa', 'No clasifica sola. Toca Reanudar.'];
+  if (e.mano) return ['Una mano', 'La IA vio una mano: la bandeja no se mueve hasta que la quiten.'];
   if (e.esperando && (e.ultra || e.cam)) return ['Ya se clasificó', 'Espera a que la bandeja quede libre.'];
-  if (e.ultra && e.cam) return ['Hay un residuo', 'Lo ven el ultrasónico y la cámara.'];
-  if (e.ultra) return ['Hay un residuo', 'Lo ve el ultrasónico (la cámara no).'];
-  if (e.cam) return ['Hay un residuo', 'Lo ve la cámara (el ultrasónico no).'];
+  if (e.ultra && e.cam) return ['Llegó algo', 'Lo ven el ultrasónico y la cámara; la IA decide qué es.'];
+  if (e.ultra) return ['Llegó algo', 'Lo ve el ultrasónico (la cámara no); la IA decide qué es.'];
+  if (e.cam) return ['Llegó algo', 'Lo ve la cámara (el ultrasónico no); la IA decide qué es.'];
   return ['Bandeja libre', 'Ni el ultrasónico ni la cámara ven algo.'];
 }
 
@@ -461,7 +492,7 @@ function pintarEstado() {
   const e = app.estado;
   if (!e) return;
   // Ultrasónico: cuánto más cerca que la bandeja vacía
-  const umbralCm = e.ultraUmbral ?? 1.5;
+  const umbralCm = e.ultraUmbral ?? app.ultraUmbral ?? 1.5;
   $('#s-ultra').dataset.ve = e.ultra ? 'si' : 'no';
   if (e.dist === null || e.dist === undefined) {
     $('#s-dist').textContent = '—';
@@ -516,8 +547,11 @@ function pintarEstado() {
       'Cárgale el programa de Caneca3 › 3_codigo › esp32cam con el Arduino IDE.'
     : '';
 
-  // El ultrasónico es confiable si sus medidas no saltan: guardar las de los últimos 15 s
-  if (Number.isFinite(e.dist) && e.dist > 0) {
+  // El ultrasónico es confiable si sus medidas no saltan: guardar las de los últimos 15 s, solo con la
+  // bandeja libre y a nivel (si alguien pone un residuo, que la distancia cambie es lo normal)
+  const bandejaLibre = e.servo === 90 && !e.ultra && !e.cam && !e.esperando && !e.mano && !e.atascado;
+  if (!bandejaLibre) app.distancias = [];
+  else if (Number.isFinite(e.dist) && e.dist > 0) {
     app.distancias.push([Date.now(), e.dist]);
     app.distancias = app.distancias.filter(([t]) => Date.now() - t < 15000);
   }
@@ -538,6 +572,8 @@ function pintarEstado() {
     pagina.append('http://192.168.4.1 conectado a la red Caneca-IoT.');
   }
 
+  if (panelActual === 'calibrar') pintarUltraCal();
+
   $('#btn-pausa').textContent = e.pausa ? 'Reanudar' : 'Pausar';
   $('#btn-pausa').title = e.pausa ? 'Vuelve a clasificar sola' : 'Deja de clasificar sola (los botones siguen funcionando)';
   $('#btn-flash').setAttribute('aria-pressed', String(Boolean(e.flash)));
@@ -550,6 +586,8 @@ function pintarEstado() {
 const fmt = new Intl.NumberFormat('es-CO');
 const pct = (n, total) => (total ? Math.round((n / total) * 100) : 0);
 const esAprovechable = (clase) => app.clases.find((c) => c.id === clase)?.caneca === 'blanca';
+// mano y bandeja vacía: la IA dijo que no había residuo (la bandeja no se movió)
+const sinResiduo = (clase) => clase === 'vacio' || clase === 'mano' || app.clases.find((c) => c.id === clase)?.caneca === 'ninguna';
 const cuenta = (clase) => app.conteos[clase] ?? 0;
 
 function filaBarra(nombre, n, max, totalGrupo) {
@@ -600,7 +638,7 @@ function pintarActividad() {
   const cubos = Array.from({ length: 24 }, (_, i) => ({ t: inicio + i * 3600 * 1000, si: 0, no: 0 }));
   for (const [t, clase] of app.estadisticas.ultimas24h || []) {
     const i = Math.floor((t - inicio) / 3600000);
-    if (i < 0 || i > 23 || clase === 'vacio') continue;
+    if (i < 0 || i > 23 || sinResiduo(clase)) continue;
     if (esAprovechable(clase)) cubos[i].si++;
     else cubos[i].no++;
   }
@@ -643,7 +681,7 @@ function pintarConteos() {
   $('#n-si').textContent = `${fmt.format(si)} (${pct(si, total)}%)`;
   $('#n-no').textContent = `${fmt.format(no)} (${pct(no, total)}%)`;
 
-  const ult = (app.estadisticas.ultimas24h || []).filter(([, c]) => c !== 'vacio');
+  const ult = (app.estadisticas.ultimas24h || []).filter(([, c]) => !sinResiduo(c));
   const haceHora = Date.now() - 3600 * 1000;
   $('#k-total').textContent = fmt.format(total);
   $('#k-24h').textContent = fmt.format(ult.length);
@@ -653,6 +691,69 @@ function pintarConteos() {
   pintarBarras($('#barras-si'), aprovechables, true);
   pintarBarras($('#barras-no'), noAprovechables, false);
   pintarActividad();
+  pintarPrecision();
+}
+
+// Qué tan bien decide: sale de lo que se marca en el Historial (Sí / No, y qué era)
+const NOMBRE_GRUPO = {
+  aprovechables: 'aprovechables', no_aprovechables: 'no aprovechables', mano: 'una mano', vacio: 'bandeja vacía',
+  error: 'sin respuesta', nivel: 'no mover',
+};
+function pintarPrecision() {
+  const p = app.estadisticas.precision;
+  if (!p) return;
+  const acierto = p.revisadas ? Math.round((100 * p.aciertos) / p.revisadas) : null;
+  $('#p-acierto').textContent = acierto === null ? '—' : `${acierto} %`;
+  $('#p-sub').textContent = p.revisadas
+    ? `${p.aciertos} de ${p.revisadas} revisadas fueron al lado correcto o, si era una mano o estaba vacía, no se movieron. Error: ${100 - acierto} %.`
+    : 'Marca en el Historial si cada clasificación acertó (Sí / No) y aquí sale el porcentaje de error.';
+  $('#p-seg-ok').style.width = `${acierto ?? 0}%`;
+  $('#p-seg-mal').style.width = `${acierto === null ? 0 : 100 - acierto}%`;
+  $('#p-barra').setAttribute('aria-label', acierto === null ? 'Sin revisiones' : `${acierto}% aciertos, ${100 - acierto}% errores`);
+  $('#p-revisadas').textContent = fmt.format(p.revisadas);
+  $('#p-sinrevisar').textContent = fmt.format(p.sinRevisar);
+  const manos = p.sinResiduo?.mano || 0;
+  const vacias = p.sinResiduo?.vacio || 0;
+  $('#p-falsos').textContent = fmt.format(manos + vacias);
+  $('#p-falsos-sub').textContent = `${manos} ${manos === 1 ? 'mano' : 'manos'} y ${vacias} con la bandeja vacía: la IA no movió la bandeja`;
+  const caidas = (p.caidas?.si || 0) + (p.caidas?.no || 0);
+  $('#p-cayo').textContent = caidas ? `${pct(p.caidas.si, caidas)} %` : '—';
+  $('#p-cayo-sub').textContent = caidas ? `${p.caidas.si} de ${caidas} veces cayó a la primera o en el reintento` : 'se sabe con el programa 2026-10-17.6';
+  $('#p-nodetecto').textContent = fmt.format(p.noDetecto || 0);
+
+  const lista = $('#p-pordijo');
+  lista.replaceChildren();
+  const grupos = Object.entries(p.porDijo || {}).sort((a, b) => b[1].n - a[1].n);
+  if (!grupos.length) {
+    const vacio = document.createElement('p');
+    vacio.className = 'vacio-nota';
+    vacio.textContent = 'Todavía no hay clasificaciones revisadas.';
+    lista.append(vacio);
+  }
+  for (const [grupo, d] of grupos) {
+    const li = filaBarra(`Dijo ${NOMBRE_GRUPO[grupo] || grupo}`, d.ok, d.n, d.n);
+    li.querySelector('.num').textContent = `${d.ok}/${d.n}`;
+    li.title = `Cuando dijo ${NOMBRE_GRUPO[grupo] || grupo}: acertó ${d.ok} de ${d.n}`;
+    lista.append(li);
+  }
+
+  const errores = $('#p-errores');
+  errores.replaceChildren();
+  if (!p.errores?.length) {
+    const vacio = document.createElement('p');
+    vacio.className = 'vacio-nota';
+    vacio.textContent = p.revisadas ? 'Ningún error marcado.' : 'Aquí salen los errores que marques.';
+    errores.append(vacio);
+  }
+  for (const [clave, n] of p.errores || []) {
+    const [dijo, era] = clave.split('>');
+    const li = document.createElement('li');
+    const veces = document.createElement('b');
+    veces.textContent = `${n}×`;
+    const real = era === 'vacio' ? 'estaba vacía' : `era ${NOMBRE_REAL[era] || NOMBRE_GRUPO[era] || era}`;
+    li.append(veces, ` dijo ${NOMBRE_GRUPO[dijo] || dijo} y ${real}`);
+    errores.append(li);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -681,9 +782,12 @@ function describir(evento) {
   if (evento.tipo === 'aviso') return `Aviso: ${evento.msg}`;
   if (evento.tipo === 'captura') {
     const tipo = app.tiposCaptura[evento.capturaTipo] || 'Captura';
-    return `Captura guardada: ${tipo}${evento.nota ? ` («${evento.nota}»)` : ''}`;
+    return `${tipo}${evento.nota ? ` («${evento.nota}»)` : ''}`;
   }
   if (evento.tipo === 'clasificacion') {
+    if (evento.clase === 'mano') return 'Una mano: la bandeja no se movió';
+    if (evento.clase === 'vacio') return 'Bandeja vacía: no se movió';
+    if (evento.clase === 'error') return 'La IA no respondió: la bandeja no se movió';
     const accion = evento.lado === 'nivel' && QUE_HACER[evento.caneca] ? QUE_HACER[evento.caneca] : textoLado(evento.lado);
     return `${NOMBRE_CLASE[evento.clase] || evento.clase}, ${accion}`;
   }
@@ -695,7 +799,8 @@ function describir(evento) {
 
 function tipoEvento(evento) {
   if (evento.tipo === 'clasificacion') {
-    if (evento.clase === 'vacio' || evento.lado === 'nivel') return 'vacio';
+    if (evento.clase === 'error') return 'aviso';
+    if (sinResiduo(evento.clase) || evento.lado === 'nivel') return 'vacio';
     return evento.lado === 'aprovechables' ? 'si' : 'no';
   }
   return evento.tipo === 'aviso' ? 'aviso' : evento.tipo === 'captura' ? 'captura' : 'mov';
@@ -716,6 +821,78 @@ function miniatura(src, texto) {
   return boton;
 }
 
+function chip(texto, tipo) {
+  const c = document.createElement('span');
+  c.className = 'chip';
+  c.dataset.tipo = tipo;
+  c.textContent = texto;
+  return c;
+}
+
+function boton(texto, clase, alClic) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = clase;
+  b.textContent = texto;
+  b.addEventListener('click', alClic);
+  return b;
+}
+
+// Qué decidió la IA, en el mismo idioma de las opciones de revisar
+const grupoDecision = (e) => (sinResiduo(e.clase) ? e.clase : e.lado);
+const NOMBRE_REAL = { aprovechables: 'aprovechable', no_aprovechables: 'no aprovechable', mano: 'una mano', vacio: 'vacía' };
+const OPCIONES_REVISAR = [
+  ['aprovechables', 'Era aprovechable'],
+  ['no_aprovechables', 'Era no aprovechable'],
+  ['mano', 'Era una mano'],
+  ['vacio', 'Estaba vacía'],
+];
+let revisionAbierta = null; // id de la clasificación en la que se tocó "No"
+
+// Botones para decir si la caneca acertó (solo quien tiene el control)
+function controlesRevision(evento) {
+  if (evento.clase === 'error') return null;
+  const caja = document.createElement('div');
+  caja.className = 'revisar';
+  if (evento.revision && revisionAbierta !== evento.id) {
+    const r = evento.revision;
+    caja.append(chip(r.ok ? 'Acertó' : `Error: era ${NOMBRE_REAL[r.real] || NOMBRE_CLASE[r.real] || r.real}`, r.ok ? 'ok' : 'mal'));
+    if (manejo()) caja.append(boton('Cambiar', 'boton-texto', () => mandar({ t: 'revisar', id: evento.id, real: '' })));
+    return caja;
+  }
+  if (!manejo()) return null;
+  if (revisionAbierta === evento.id) {
+    const pregunta = document.createElement('span');
+    pregunta.className = 'revisar-pregunta';
+    pregunta.textContent = '¿Qué era?';
+    caja.append(pregunta);
+    for (const [valor, texto] of OPCIONES_REVISAR) {
+      if (valor === grupoDecision(evento)) continue; // eso fue lo que dijo: no sería un error
+      caja.append(boton(texto, 'boton boton-chico', () => {
+        revisionAbierta = null;
+        mandar({ t: 'revisar', id: evento.id, real: valor });
+      }));
+    }
+    caja.append(boton('Cancelar', 'boton-texto', () => {
+      revisionAbierta = null;
+      pintarHistorial();
+    }));
+    return caja;
+  }
+  const pregunta = document.createElement('span');
+  pregunta.className = 'revisar-pregunta';
+  pregunta.textContent = '¿Acertó?';
+  caja.append(
+    pregunta,
+    boton('Sí', 'boton boton-chico boton-si', () => mandar({ t: 'revisar', id: evento.id, real: 'bien' })),
+    boton('No', 'boton boton-chico boton-no', () => {
+      revisionAbierta = evento.id;
+      pintarHistorial();
+    }),
+  );
+  return caja;
+}
+
 function pintarHistorial() {
   const lista = $('#historial');
   lista.replaceChildren();
@@ -731,34 +908,51 @@ function pintarHistorial() {
     que.className = 'historial-que';
     const titulo = document.createElement('strong');
     titulo.textContent = describir(evento);
-    const detalle = document.createElement('small');
-    const partes = [NOMBRE_ORIGEN[evento.origen], evento.ms ? `la IA tardó ${coma(evento.ms / 1000)} s` : null].filter(Boolean);
-    detalle.textContent = partes.join(', ');
     que.append(titulo);
-    if (partes.length) que.append(detalle);
-    if (evento.nota && evento.tipo === 'clasificacion') que.title = evento.nota;
+    const partes = [
+      NOMBRE_ORIGEN[evento.origen],
+      evento.ms ? `la IA tardó ${coma(evento.ms / 1000)} s` : null,
+      evento.intentos > 1 ? `inclinó ${evento.intentos} veces` : null,
+    ].filter(Boolean);
+    if (evento.clase === 'error' && evento.nota) partes.push(evento.nota);
+    if (partes.length) {
+      const detalle = document.createElement('small');
+      detalle.textContent = partes.join(', ');
+      que.append(detalle);
+    }
+    if (evento.tipo === 'clasificacion') {
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      if (evento.cayo === true) chips.append(chip('Cayó', 'ok'));
+      if (evento.cayo === false) chips.append(chip('No cayó', 'mal'));
+      if (chips.childElementCount) que.append(chips);
+      const revisar = controlesRevision(evento);
+      if (revisar) que.append(revisar);
+    }
 
     fila.append(cuando, que);
-    // la foto que vio la IA, o la captura de calibración, para revisarla
+    // la foto que vio la IA, o la captura guardada, para revisarla
     if (evento.tipo === 'clasificacion' && evento.foto) {
       fila.append(miniatura(`/fotos/${evento.id}.jpg`, `${describir(evento)}, ${hora(evento.fecha)}`));
     } else if (evento.tipo === 'captura' && evento.capturaId) {
-      const revisar = document.createElement('button');
-      revisar.type = 'button';
-      revisar.className = 'boton-texto';
-      revisar.textContent = 'Revisar';
-      revisar.addEventListener('click', () => abrirCaptura(evento.capturaId));
-      fila.append(revisar);
+      fila.append(boton('Revisar', 'boton-texto', () => abrirCaptura(evento.capturaId)));
     } else {
       fila.append(document.createElement('span'));
     }
     lista.append(fila);
   }
   $('#historial-vacio').hidden = app.eventos.length > 0;
+  const p = app.estadisticas.precision;
+  $('#historial-resumen').textContent = !p
+    ? 'Toca Sí o No en cada clasificación para decir si la caneca acertó.'
+    : p.revisadas
+      ? `Revisadas ${p.revisadas}: acertó el ${pct(p.aciertos, p.revisadas)} %. Faltan ${p.sinRevisar} por revisar.`
+      : `Toca Sí o No en cada clasificación para decir si la caneca acertó${p.sinRevisar ? ` (hay ${p.sinRevisar} sin revisar)` : ''}.`;
 }
 
 function pintarUltima() {
-  const ultima = app.eventos.find((e) => e.tipo === 'clasificacion');
+  const ultima = app.eventos.find((e) => e.tipo === 'clasificacion' && !sinResiduo(e.clase) && e.clase !== 'error') ||
+    app.eventos.find((e) => e.tipo === 'clasificacion');
   const foto = $('#ultima-foto');
   if (!ultima) {
     $('#ultima-texto').textContent = 'Todavía no hay clasificaciones.';
@@ -809,7 +1003,8 @@ const dep = {
   numeros: null,
   cuadro: null,
   capas: null, // las tres imágenes ya pintadas (80 x 60)
-  vista: 'dif',
+  vista: 'color', // la imagen en color de la cámara, con el cuadro amarillo
+  calibrando: 0, // cuándo se tocó "Calibrar con la bandeja vacía" (0 = no está calibrando)
   foto: null, // foto en color de una captura
   ultimoCuadro: 0,
   pedidoDesde: 0,
@@ -818,6 +1013,7 @@ const dep = {
 const cal = {
   umbral: null, // lo que estás probando (sin guardar)
   zona: null,
+  ultra: null, // cm del ultrasónico
   historia: [], // [fecha, % de la cámara] de los últimos 30 s, para ver hasta dónde sube
   editarZona: false,
   arrastre: null,
@@ -826,17 +1022,19 @@ const cal = {
 const mismaZona = (a, b) => Boolean(a && b) && LADOS_ZONA.every((k) => a[k] === b[k]);
 function hayCambios() {
   if (cal.umbral === null || !cal.zona || app.umbralCamara === null || !app.zona) return false;
-  return cal.umbral !== app.umbralCamara || !mismaZona(cal.zona, app.zona);
+  return cal.umbral !== app.umbralCamara || !mismaZona(cal.zona, app.zona) || (app.ultraUmbral !== null && cal.ultra !== app.ultraUmbral);
 }
 function copiarGuardados() {
   cal.umbral = app.umbralCamara;
   cal.zona = app.zona ? { ...app.zona } : null;
+  cal.ultra = app.ultraUmbral;
 }
 // Si no estabas probando nada, el borrador sigue a lo guardado; si sí, se respeta lo que movías
-function recibirAjustes(umbral, zona) {
+function recibirAjustes(umbral, zona, ultra) {
   const estabaLimpio = !hayCambios();
   app.umbralCamara = umbral;
   app.zona = zona;
+  app.ultraUmbral = ultra ?? app.ultraUmbral;
   if (estabaLimpio || cal.umbral === null) copiarGuardados();
 }
 
@@ -881,8 +1079,9 @@ function zonaCanecaEnPct() {
 function canecaUsaZona(zona) {
   const c = dep.cuadro;
   if (!c || !zona) return false;
-  return Math.round((c.w * zona.x0) / 100) === c.zona.x0 && Math.round((c.w * zona.x1) / 100) === c.zona.x1 &&
-    Math.round((c.h * zona.y0) / 100) === c.zona.y0 && Math.round((c.h * zona.y1) / 100) === c.zona.y1;
+  // la placa pasa el % a puntos redondeando hacia abajo (división entera)
+  return Math.floor((c.w * zona.x0) / 100) === c.zona.x0 && Math.floor((c.w * zona.x1) / 100) === c.zona.x1 &&
+    Math.floor((c.h * zona.y0) / 100) === c.zona.y0 && Math.floor((c.h * zona.y1) / 100) === c.zona.y1;
 }
 
 function pintarCuadro(cuadro) {
@@ -957,9 +1156,9 @@ function pintarGrande() {
   const H = canvas.height;
   ctx.fillStyle = '#1b2420';
   ctx.fillRect(0, 0, W, H);
-  const fuente = dep.vista === 'foto' ? dep.foto : dep.capas?.[dep.vista];
+  const fuente = dep.vista === 'foto' ? dep.foto : dep.vista === 'color' ? imagenEnColor() : dep.capas?.[dep.vista];
   if (fuente) {
-    ctx.imageSmoothingEnabled = dep.vista === 'foto';
+    ctx.imageSmoothingEnabled = dep.vista === 'foto' || dep.vista === 'color';
     ctx.drawImage(fuente, 0, 0, W, H);
   }
   // la zona que usa la caneca, si es distinta de la que estás probando
@@ -972,8 +1171,39 @@ function pintarGrande() {
     ctx.setLineDash([]);
   }
   if (fuente || cal.zona) dibujarZona(ctx, W, H, cal.zona, { sucia: !mismaZona(cal.zona, app.zona) });
-  const nombres = { dif: 'Qué cambió', cur: 'Lo que ve ahora', ref: 'Bandeja vacía guardada', foto: 'Foto en color de la captura' };
+  const nombres = { color: 'Imagen de la cámara en color', dif: 'Qué cambió', cur: 'Lo que ve ahora en gris', ref: 'Bandeja vacía guardada', foto: 'Foto de la captura' };
   canvas.setAttribute('aria-label', `${nombres[dep.vista]}, con la zona que se revisa en amarillo`);
+}
+
+// La imagen en vivo (la misma de En vivo) sirve para ver la zona en color: es más fácil que en gris
+function imagenEnColor() {
+  const img = $('#camara-img');
+  return img.complete && img.naturalWidth && Date.now() - app.ultimaImagen < 5000 ? img : null;
+}
+function pintarColorMini() {
+  const chico = $('#dep-color');
+  const ctx = chico.getContext('2d');
+  const img = imagenEnColor();
+  ctx.fillStyle = '#1b2420';
+  ctx.fillRect(0, 0, chico.width, chico.height);
+  if (img) ctx.drawImage(img, 0, 0, chico.width, chico.height);
+  dibujarZona(ctx, chico.width, chico.height, cal.zona, { chica: true });
+}
+
+const LEYENDAS = {
+  dif: [['m-brillo', 'cambió el brillo'], ['m-borde', 'cambió un borde'], ['m-zona', 'zona que se revisa']],
+  otra: [['m-zona', 'zona que se revisa: lo de afuera no cuenta']],
+};
+function pintarLeyenda() {
+  const leyenda = $('#leyenda');
+  leyenda.replaceChildren();
+  for (const [clase, texto] of LEYENDAS[dep.vista === 'dif' ? 'dif' : 'otra']) {
+    const item = document.createElement('span');
+    const marca = document.createElement('i');
+    marca.className = `m ${clase}`;
+    item.append(marca, texto);
+    leyenda.append(item);
+  }
 }
 
 const siNo = (v) => (v ? 'sí' : 'no');
@@ -997,19 +1227,14 @@ function pintarPasos(n) {
     const segundos = Number.isFinite(n.buscandoS) ? n.buscandoS : Math.round((Date.now() - dep.tomandoDesde) / 1000);
     const mov = Number.isFinite(n.movPct) ? ` Movimiento: ${n.movPct} % (la guarda con menos de ${n.movUmbral ?? 2} %).` : '';
     let lleva = '';
-    if (segundos >= 8 && firmwareViejo() && !dep.viendoCaptura) {
-      lleva = ` Lleva ${segundos} s sin poder guardarla: aunque esté vacía, la imagen cambia por el ruido de la cámara. ` +
-        `El programa ${app.estado?.fw || 'viejo'} no puede con eso; el ${FIRMWARE_ESPERADO} se adapta al ruido y la guarda al tocar el botón.`;
-    } else if (segundos >= 6) {
-      lleva = ` Lleva ${segundos} s esperando: si la bandeja está vacía, toca el botón y la guarda de una vez.`;
-    }
+    if (segundos >= 6) lleva = ` Lleva ${segundos} s esperando: si la bandeja está vacía, toca "Calibrar con la bandeja vacía" y la guarda de una vez.`;
     ref = `Guardándola: esperando a que todo esté quieto.${mov}${lleva}`;
   } else if (n.refLista === false) {
     paso1.dataset.ok = 'no';
-    ref = 'No hay foto de la bandeja vacía. Deja la bandeja vacía y toca el botón.';
+    ref = 'La cámara no tiene la imagen de la bandeja vacía. Deja la bandeja vacía y toca el botón.';
   } else {
     paso1.dataset.ok = 'si';
-    ref = `Guardada ${textoEdad(n.refEdadS)}.`.replace(' .', '.');
+    ref = `La cámara tiene la bandeja vacía de ${textoEdad(n.refEdadS)}.`.replace(' .', '.');
   }
   $('#dep-ref-estado').textContent = ref;
   if (n.fase !== 'tomando_referencia') dep.tomandoDesde = 0;
@@ -1021,7 +1246,7 @@ function pintarPasos(n) {
   else if (n.fase === 'bandeja_no_esta') cam = 'La bandeja no está a nivel: no compara.';
   else if (!Number.isFinite(n.camPct)) cam = 'Sin medida.';
   else {
-    cam = `${n.camPct} % de la zona cambió; hay residuo desde ${n.umbral} %: ${siNo(n.camPct >= n.umbral)}.`;
+    cam = `${n.camPct} % de la zona cambió; avisa desde ${n.umbral} %: ${siNo(n.camPct >= n.umbral)}.`;
     if (n.camPct >= n.umbral && !n.camVe) cam += n.movPct >= 2 ? ` Se está moviendo (${n.movPct} %): espera a que quede quieto.` : ' Falta que se quede quieto 1 s.';
   }
   cajaCam.dataset.ve = n.camVe ? 'si' : 'no';
@@ -1034,9 +1259,9 @@ function pintarPasos(n) {
   else {
     const dif = n.vacia - n.dist;
     ultra = dif >= 0
-      ? `${coma(dif)} cm más cerca que la bandeja vacía; hay residuo desde ${coma(n.ultraUmbral ?? 1.5)} cm: ${siNo(n.ultraVe)}.`
+      ? `${coma(dif)} cm más cerca que la bandeja vacía; avisa desde ${coma(n.ultraUmbral ?? 1.5)} cm: ${siNo(n.ultraVe)}.`
       : `Mide ${coma(-dif)} cm más lejos que la bandeja vacía.` +
-        (dif < -2 ? ' Revisa que la bandeja esté horizontal y el sensor derecho; luego guarda la bandeja vacía otra vez.' : ' Es una variación pequeña.');
+        (dif < -2 ? ' Revisa que la bandeja esté horizontal y el sensor derecho; luego calibra otra vez con la bandeja vacía.' : ' Es una variación pequeña.');
   }
   const salto = dep.viendoCaptura ? null : saltoUltrasonico();
   if (salto) {
@@ -1048,12 +1273,13 @@ function pintarPasos(n) {
 
   const cajaRes = $('#dep-paso-res');
   let res;
-  if (n.vaciar) res = 'Modo vaciar: no clasifica hasta que toques Nivelar.';
+  if (n.mano) res = 'La IA vio una mano: no se mueve ni vuelve a preguntar hasta que algo se mueva (la mano se va).';
+  else if (n.vaciar) res = 'Modo vaciar: no clasifica hasta que toques Nivelar.';
   else if (n.atascado) res = 'El residuo no cayó al inclinar: sácalo a mano o toca Nivelar.';
   else if (n.pausa) res = 'En pausa: no clasifica sola.';
   else if (n.esperando) res = 'Ya clasificó lo que hay: espera a que la bandeja quede libre.';
-  else if (n.camVe || n.ultraVe) res = `Hay residuo (lo ve ${[n.ultraVe && 'el ultrasónico', n.camVe && 'la cámara'].filter(Boolean).join(' y ')}): toma la foto con flash y la manda a la IA.`;
-  else res = 'Bandeja libre: no hace nada. Si hay algo y no lo detecta, guárdalo abajo con "No lo detectó".';
+  else if (n.camVe || n.ultraVe) res = `Llegó algo (lo ve ${[n.ultraVe && 'el ultrasónico', n.camVe && 'la cámara'].filter(Boolean).join(' y ')}): toma la foto con flash y la IA decide si va a aprovechables, a no aprovechables, o si no hace nada (una mano o la bandeja vacía).`;
+  else res = 'Bandeja libre: no hace nada. Si pusiste algo y no lo detecta, avísalo en el Historial con "Puse algo y no lo detectó".';
   cajaRes.dataset.ve = n.atascado ? 'alerta' : n.camVe || n.ultraVe ? 'si' : 'no';
   cajaRes.querySelector('dd').textContent = res;
 
@@ -1088,8 +1314,8 @@ function pintarSensibilidad() {
   $('#o-umbral').textContent = `${umbral} %`;
 
   let veredicto;
-  if (ahora === null) veredicto = 'Cuando la cámara compare, aquí ves si con este valor detectaría algo.';
-  else veredicto = ve ? `Con ${umbral} %, la cámara diría que hay un residuo.` : `Con ${umbral} %, la cámara diría que la bandeja está libre.`;
+  if (ahora === null) veredicto = 'Cuando la cámara compare, aquí ves si con este valor avisaría.';
+  else veredicto = ve ? `Con ${umbral} %, la cámara avisaría que llegó algo.` : `Con ${umbral} %, la cámara diría que la bandeja está libre.`;
   if (cal.umbral !== app.umbralCamara) veredicto += ` Es una prueba: la caneca sigue usando ${app.umbralCamara} % hasta que guardes.`;
   if (!mismaZona(cal.zona, app.zona)) veredicto += ' El % se vuelve a medir con la zona nueva cuando la guardes.';
   $('#cal-veredicto').textContent = veredicto;
@@ -1104,6 +1330,7 @@ function pintarDeslizadores() {
     $(`#o-${k}`).textContent = `${cal.zona[k]} %`;
   }
   if (cal.umbral !== null) $('#umbral-cam').value = cal.umbral;
+  if (cal.ultra !== null && cal.ultra !== undefined) $('#umbral-ultra').value = cal.ultra;
 }
 
 function pintarGuardar() {
@@ -1114,11 +1341,12 @@ function pintarGuardar() {
   $('#btn-descartar').hidden = !cambios;
   const z = app.zona;
   const actual = z && app.umbralCamara !== null
-    ? `hay residuo desde ${app.umbralCamara} %, zona de ${z.x0} a ${z.x1} % a lo ancho y de ${z.y0} a ${z.y1} % a lo alto`
+    ? `zona de ${z.x0} a ${z.x1} % a lo ancho y de ${z.y0} a ${z.y1} % a lo alto; la cámara avisa desde ${app.umbralCamara} %` +
+      (app.ultraUmbral !== null ? ` y el ultrasónico desde ${coma(app.ultraUmbral)} cm` : '')
     : null;
   let texto;
   if (!actual) texto = 'Cargando los ajustes…';
-  else if (!cambios) texto = `La caneca usa: ${actual}. Mueve la zona o la sensibilidad para probar.`;
+  else if (!cambios) texto = `La caneca usa: ${actual}. Mueve la zona o las rayas para probar.`;
   else if (manejo()) texto = `Tienes cambios sin guardar. La caneca sigue usando lo anterior: ${actual}.`;
   else texto = 'Estás probando sin guardar. Para que la caneca use estos valores necesitas el control con el PIN.';
   if (cambios && !app.online && manejo()) texto += ' La caneca no está conectada: se le mandan cuando se conecte.';
@@ -1138,7 +1366,10 @@ function pintarEstadoCal() {
   const ahora = Date.now();
   const enVivo = !dep.viendoCaptura && !dep.congelado;
   // con la caneca desconectada, el servidor puede mandar la última imagen que guardó: no es en vivo
-  const fresco = app.online && ahora - dep.ultimoCuadro < 4000;
+  const frescoGris = app.online && ahora - dep.ultimoCuadro < 4000;
+  const frescoColor = app.online && ahora - app.ultimaImagen < 4000;
+  // la vista en color sale de la imagen en vivo; las demás, de las miniaturas de la calibración
+  const fresco = dep.vista === 'color' ? frescoColor : frescoGris;
 
   // Imagen
   const ceImagen = $('#ce-imagen');
@@ -1182,23 +1413,104 @@ function pintarEstadoCal() {
     let razon;
     if (!app.servidor) razon = 'Sin conexión con el servidor. Cuando vuelva, aquí aparece lo que ve la caneca.';
     else if (!app.online) razon = 'La caneca no está conectada. Revisa que esté prendida y con Wi-Fi; cuando se conecte, aquí aparece lo que ve.';
+    else if (dep.vista === 'color') razon = 'Esperando la imagen en vivo de la caneca…';
     else if (firmwareViejo()) razon = `La caneca tiene el programa ${app.estado?.fw || 'viejo'} y esta parte necesita el ${FIRMWARE_ESPERADO} o uno más nuevo. Cárgale el programa de la carpeta Caneca3 con el Arduino IDE.`;
     else if (ahora - dep.pedidoDesde < 6000) razon = 'Pidiendo las imágenes a la caneca… llega una cada segundo.';
     else razon = 'La caneca está conectada pero no manda las imágenes. Recarga la página; si sigue igual, reinicia la caneca.';
     $('#lienzo-vacio-texto').textContent = razon;
   }
-  if (enVivo && dep.cuadro) {
-    const hace = Math.round((ahora - dep.ultimoCuadro) / 1000);
-    $('#dep-fuente').textContent = fresco ? 'En vivo' : `Última imagen ${textoEdad(hace)}`;
+  if (enVivo && (dep.cuadro || dep.vista === 'color')) {
+    const ultima = dep.vista === 'color' ? app.ultimaImagen : dep.ultimoCuadro;
+    const hace = Math.round((ahora - ultima) / 1000);
+    $('#dep-fuente').textContent = fresco ? 'En vivo' : ultima ? `Última imagen ${textoEdad(hace)}` : 'Sin imagen';
   }
+  // el botón de calibrar vuelve solo si la caneca no contestó
+  if (dep.calibrando && ahora - dep.calibrando > 15000) {
+    dep.calibrando = 0;
+    avisar('La caneca no contestó la calibración. Revisa que tenga el programa nuevo y vuelve a intentarlo.', 'error');
+    pintarCalibracion();
+  }
+}
+
+// Ultrasónico: cuántos cm más cerca que la bandeja vacía está lo que mide ahora, contra la raya
+function pintarUltraCal() {
+  const e = app.estado;
+  const umbral = cal.ultra ?? app.ultraUmbral ?? 1.5;
+  const hay = e && Number.isFinite(e.dist) && Number.isFinite(e.vacia) && e.vacia > 0;
+  const dif = hay ? Math.max(0, e.vacia - e.dist) : null;
+  const escala = Math.max(5, Math.ceil(Math.max(umbral * 2, (dif ?? 0) * 1.2)));
+  $('#ul-relleno').style.width = `${dif === null ? 0 : limitar(dif / escala, 0, 1) * 100}%`;
+  $('#ul-raya').style.left = `${limitar(umbral / escala, 0, 1) * 100}%`;
+  $('#ul-raya-texto').textContent = `${coma(umbral)} cm`;
+  $('#ul-escala').textContent = `${escala} cm`;
+  $('#o-ultra').textContent = `${coma(umbral)} cm`;
+  const ve = dif !== null && dif >= umbral;
+  $('#regla-ultra').dataset.ve = ve ? 'si' : 'no';
+  if (!hay) {
+    $('#ul-ahora').textContent = '—';
+    $('#ul-texto').textContent = 'Esperando la distancia de la bandeja vacía: toca "Calibrar con la bandeja vacía".';
+    $('#ul-veredicto').textContent = '';
+    return;
+  }
+  $('#ul-ahora').textContent = `${coma(dif)} cm`;
+  const lejos = e.vacia - e.dist < 0 ? ` (mide ${coma(e.dist - e.vacia)} cm más lejos)` : '';
+  $('#ul-texto').textContent = `más cerca que la bandeja vacía: mide ${coma(e.dist)} cm y la bandeja vacía está a ${coma(e.vacia)} cm${lejos}.`;
+  let v = ve ? `Con ${coma(umbral)} cm, el ultrasónico avisaría que llegó algo.` : `Con ${coma(umbral)} cm, el ultrasónico diría que la bandeja está libre.`;
+  if (app.ultraUmbral !== null && cal.ultra !== app.ultraUmbral) v += ` Es una prueba: la caneca sigue usando ${coma(app.ultraUmbral)} cm hasta que guardes.`;
+  $('#ul-veredicto').textContent = v;
+}
+
+// Resultado de "Calibrar con la bandeja vacía" y la foto que usa la IA
+function pintarCalibracion() {
+  const btn = $('#btn-calibrar');
+  btn.textContent = dep.calibrando ? 'Calibrando… no toques la caneca' : 'Calibrar con la bandeja vacía';
+  btn.disabled = Boolean(dep.calibrando) || !app.online || !manejo();
+  const c = app.calibracion;
+  const caja = $('#cal-resultado');
+  caja.hidden = !c && !app.referencia;
+  const img = $('#cal-ref-img');
+  img.hidden = !app.referencia;
+  if (app.referencia) {
+    const src = `/referencia.jpg?v=${encodeURIComponent(app.referencia)}`;
+    if (img.getAttribute('src') !== src) img.src = src;
+    img.onclick = () => abrirVisor(src, 'Foto de la bandeja vacía que la IA usa para comparar');
+  }
+  const usar = $('#btn-usar-sugerido');
+  usar.hidden = true;
+  const partes = [];
+  if (c) {
+    partes.push(`Calibrada a las ${hora(c.fecha)}`.replace(/\.?$/, '.'));
+    if (c.vacia !== null && c.vacia !== undefined) {
+      partes.push(`El ultrasónico mide la bandeja vacía a ${coma(c.vacia)} cm y varía ±${coma(c.desv ?? 0, 2)} cm (${c.validas} de ${c.medidas} medidas).`);
+      if (c.desv > 0.5) partes.push('Varía mucho: apúntalo derecho al centro de la bandeja y calibra otra vez.');
+      if (c.medidas && c.validas < c.medidas * 0.7) partes.push(`No respondió ${c.medidas - c.validas} veces: revisa sus cables.`);
+      if (c.sugerido && c.sugerido !== (cal.ultra ?? app.ultraUmbral)) {
+        usar.hidden = false;
+        usar.textContent = `Usar ${coma(c.sugerido)} cm para el ultrasónico (sugerido)`;
+        usar.onclick = () => {
+          cal.ultra = c.sugerido;
+          pintarCal();
+        };
+      }
+    } else if (c.medidas) {
+      partes.push('El ultrasónico no respondió: revisa Trig, Echo, 5 V y GND.');
+    }
+    partes.push(c.camara ? 'La cámara guardó la bandeja vacía.' : 'La cámara no pudo guardar la bandeja vacía.');
+  }
+  partes.push(app.referencia ? 'La foto es la bandeja vacía que la IA usa para comparar (tócala para verla).' : 'La IA todavía no tiene foto de la bandeja vacía.');
+  $('#cal-resultado-texto').textContent = partes.join(' ');
 }
 
 function pintarCal() {
   pintarDeslizadores();
   pintarSensibilidad();
+  pintarUltraCal();
+  pintarCalibracion();
   pintarGuardar();
   pintarEstadoCal();
+  pintarLeyenda();
   pintarGrande();
+  pintarColorMini();
   // las miniaturas también muestran la zona que estás probando
   if (dep.cuadro && dep.capas) {
     for (const v of ['ref', 'cur', 'dif']) {
@@ -1235,7 +1547,7 @@ function volverAVivo() {
   dep.viendoCaptura = null;
   dep.congelado = false;
   dep.foto = null;
-  if (dep.vista === 'foto') elegirVista('dif');
+  if (dep.vista === 'foto') elegirVista('color');
   $('#dep-congelar').textContent = 'Congelar imagen';
   $('#revision').hidden = true;
   $('#vista-foto').hidden = true;
@@ -1249,12 +1561,13 @@ async function abrirCaptura(id) {
     const r = await fetch(`/api/capturas/${id}`);
     if (!r.ok) throw new Error('no existe');
     const c = await r.json();
-    const bytes = Uint8Array.from(atob(c.cuadro), (ch) => ch.charCodeAt(0));
-    const cuadro = leerCuadro(bytes);
-    if (!cuadro) throw new Error('dañada');
+    const cuadro = c.cuadro ? leerCuadro(Uint8Array.from(atob(c.cuadro), (ch) => ch.charCodeAt(0))) : null;
+    if (c.cuadro && !cuadro) throw new Error('dañada');
+    if (!cuadro && !c.foto) throw new Error('vacía');
     dep.viendoCaptura = id;
     dep.numeros = c.datos || {};
-    pintarCuadro(cuadro);
+    if (cuadro) pintarCuadro(cuadro);
+    elegirVista(cuadro ? 'dif' : 'foto');
     pintarPasos(dep.numeros);
     pintarSensibilidad();
     const tipo = app.tiposCaptura[c.tipo] || 'Captura';
@@ -1280,41 +1593,13 @@ async function abrirCaptura(id) {
   }
 }
 
-function pintarCapturas() {
-  const lista = $('#dep-capturas');
-  lista.replaceChildren();
-  for (const c of app.capturas) {
-    const li = document.createElement('li');
-    const cuando = document.createElement('time');
-    cuando.textContent = hora(c.fecha);
-    const que = document.createElement('div');
-    const boton = document.createElement('button');
-    boton.type = 'button';
-    boton.className = 'boton-texto';
-    boton.textContent = app.tiposCaptura[c.tipo] || 'Captura';
-    boton.addEventListener('click', () => abrirCaptura(c.id));
-    que.append(boton);
-    if (c.nota) que.append(` «${c.nota}»`);
-    const datos = [
-      Number.isFinite(c.camPct) ? `cámara ${c.camPct} %` : null,
-      Number.isFinite(c.dist) && Number.isFinite(c.vacia) ? `ultrasónico ${coma(c.dist)} cm (vacía ${coma(c.vacia)} cm)` : null,
-    ].filter(Boolean).join(', ');
-    if (datos) {
-      const pie = document.createElement('small');
-      pie.textContent = datos;
-      que.append(pie);
-    }
-    li.append(cuando, que);
-    lista.append(li);
-  }
-  $('#dep-capturas-vacio').hidden = app.capturas.length > 0;
-}
-
 // --- Elegir qué imagen ver en grande
 function elegirVista(v) {
   dep.vista = v;
   for (const b of $$('.vista')) b.setAttribute('aria-pressed', String(b.dataset.vista === v));
+  pintarLeyenda();
   pintarGrande();
+  pintarEstadoCal();
 }
 for (const b of $$('.vista')) b.addEventListener('click', () => elegirVista(b.dataset.vista));
 
@@ -1352,6 +1637,14 @@ for (const k of LADOS_ZONA) {
 $('#umbral-cam').addEventListener('input', (ev) => {
   cal.umbral = Number(ev.target.value);
   pintarSensibilidad();
+  pintarGuardar();
+  pintarEstadoCal();
+});
+
+$('#umbral-ultra').addEventListener('input', (ev) => {
+  cal.ultra = Math.round(Number(ev.target.value) * 10) / 10;
+  pintarUltraCal();
+  pintarCalibracion();
   pintarGuardar();
   pintarEstadoCal();
 });
@@ -1438,7 +1731,7 @@ $('#btn-mover-zona').addEventListener('click', () => {
 $('#btn-ajustes').addEventListener('click', () => {
   if ($('#btn-ajustes').dataset.accion === 'control') return irAlPin();
   if (!hayCambios()) return;
-  mandar({ t: 'ajustes', umbralCamara: cal.umbral, zona: { ...cal.zona } });
+  mandar({ t: 'ajustes', umbralCamara: cal.umbral, zona: { ...cal.zona }, ...(cal.ultra !== null ? { ultraUmbral: cal.ultra } : {}) });
 });
 $('#btn-descartar').addEventListener('click', () => {
   copiarGuardados();
@@ -1455,12 +1748,10 @@ $('#dep-congelar').addEventListener('click', () => {
 });
 $('#dep-vivo').addEventListener('click', volverAVivo);
 
-for (const boton of $$('.dep-captura')) {
-  boton.addEventListener('click', () => {
-    mandar({ t: 'captura', tipo: boton.dataset.tipo, nota: $('#dep-nota').value.trim(), clasificar: boton.dataset.clasificar === '1' });
-    $('#dep-nota').value = '';
-  });
-}
+// Historial: "Puse algo y no lo detectó" lo anota y manda la foto a la IA
+$('#btn-no-detecto').addEventListener('click', () => {
+  mandar({ t: 'captura', tipo: 'no_detecto', nota: '', clasificar: true });
+});
 
 // Avisar antes de salir si quedaron cambios sin guardar
 window.addEventListener('beforeunload', (ev) => {
@@ -1478,7 +1769,15 @@ document.addEventListener('click', (evento) => {
   if (!boton || boton.disabled) return;
   let accion = boton.dataset.orden;
   if (accion === 'pausa' && app.estado?.pausa) accion = 'reanudar';
-  if (accion === 'referencia') cal.historia = [];
+  if (accion === 'calibrar') {
+    cal.historia = [];
+    // los programas viejos de la placa no conocen "calibrar": guardan la bandeja vacía con "referencia"
+    if (firmwareViejo()) accion = 'referencia';
+    else {
+      dep.calibrando = Date.now();
+      pintarCalibracion();
+    }
+  }
   mandar({ t: 'orden', a: accion });
 });
 
