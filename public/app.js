@@ -48,9 +48,19 @@ const app = {
   ultimaImagen: 0,
   imagenesSegundo: 0,
   urlImagen: null,
+  distancias: [], // [fecha, cm] del ultrasónico, para ver si salta
 };
 
 const manejo = () => app.control.estado === 'tuyo';
+
+// Si en 15 s el ultrasónico midió valores que se separan más de 3 cm, está recibiendo ecos raros
+function saltoUltrasonico() {
+  const v = app.distancias.map(([, d]) => d);
+  if (v.length < 4) return null;
+  const min = Math.min(...v);
+  const max = Math.max(...v);
+  return max - min > 3 ? { min, max } : null;
+}
 
 let ws = null;
 let esperaReconexion = 1000;
@@ -499,6 +509,20 @@ function pintarEstado() {
   avisoFw.textContent = fwViejo
     ? `La caneca tiene un programa más viejo (${e.fw || 'sin versión'}) que el que espera esta página (${FIRMWARE_ESPERADO}). Vuelve a cargarle el programa de la carpeta Caneca3 para que la calibración funcione.`
     : '';
+  const avisoCal = $('#cal-aviso-fw');
+  avisoCal.hidden = !fwViejo;
+  avisoCal.textContent = fwViejo
+    ? `La caneca tiene el programa ${e.fw || 'sin versión'} y esta pestaña necesita el ${FIRMWARE_ESPERADO}. Con el programa viejo la foto de la bandeja vacía casi nunca se guarda (el ruido de la cámara parece movimiento), así que la cámara no compara y mover la zona o la sensibilidad no cambia nada. ` +
+      'Cárgale el programa de Caneca3 › 3_codigo › esp32cam con el Arduino IDE.'
+    : '';
+
+  // El ultrasónico es confiable si sus medidas no saltan: guardar las de los últimos 15 s
+  if (Number.isFinite(e.dist) && e.dist > 0) {
+    app.distancias.push([Date.now(), e.dist]);
+    app.distancias = app.distancias.filter(([t]) => Date.now() - t < 15000);
+  }
+  const salto = saltoUltrasonico();
+  if (salto) $('#s-dist-sub').textContent += ` Las medidas saltan entre ${coma(salto.min)} y ${coma(salto.max)} cm: apunta el sensor derecho al centro de la bandeja.`;
 
   // La página de la caneca (Wi-Fi) también se abre desde la misma red, por su IP
   const pagina = $('#e-pagina');
@@ -968,10 +992,17 @@ function pintarPasos(n) {
   let ref;
   if (n.fase === 'tomando_referencia') {
     paso1.dataset.ok = 'medio';
+    // cuánto lleva intentando: lo dice la placa (.5) o lo cuenta la página
+    if (!dep.tomandoDesde || dep.viendoCaptura) dep.tomandoDesde = Date.now();
+    const segundos = Number.isFinite(n.buscandoS) ? n.buscandoS : Math.round((Date.now() - dep.tomandoDesde) / 1000);
     const mov = Number.isFinite(n.movPct) ? ` Movimiento: ${n.movPct} % (la guarda con menos de ${n.movUmbral ?? 2} %).` : '';
-    const lleva = Number.isFinite(n.buscandoS) && n.buscandoS >= 6
-      ? ` Lleva ${n.buscandoS} s esperando: si la bandeja está vacía, toca el botón y la guarda de una vez.`
-      : '';
+    let lleva = '';
+    if (segundos >= 8 && firmwareViejo() && !dep.viendoCaptura) {
+      lleva = ` Lleva ${segundos} s sin poder guardarla: aunque esté vacía, la imagen cambia por el ruido de la cámara. ` +
+        `El programa ${app.estado?.fw || 'viejo'} no puede con eso; el ${FIRMWARE_ESPERADO} se adapta al ruido y la guarda al tocar el botón.`;
+    } else if (segundos >= 6) {
+      lleva = ` Lleva ${segundos} s esperando: si la bandeja está vacía, toca el botón y la guarda de una vez.`;
+    }
     ref = `Guardándola: esperando a que todo esté quieto.${mov}${lleva}`;
   } else if (n.refLista === false) {
     paso1.dataset.ok = 'no';
@@ -981,6 +1012,7 @@ function pintarPasos(n) {
     ref = `Guardada ${textoEdad(n.refEdadS)}.`.replace(' .', '.');
   }
   $('#dep-ref-estado').textContent = ref;
+  if (n.fase !== 'tomando_referencia') dep.tomandoDesde = 0;
 
   // 4. Qué decide
   const cajaCam = $('#dep-paso-cam');
@@ -1006,7 +1038,12 @@ function pintarPasos(n) {
       : `Mide ${coma(-dif)} cm más lejos que la bandeja vacía.` +
         (dif < -2 ? ' Revisa que la bandeja esté horizontal y el sensor derecho; luego guarda la bandeja vacía otra vez.' : ' Es una variación pequeña.');
   }
-  cajaUltra.dataset.ve = n.ultraVe ? 'si' : 'no';
+  const salto = dep.viendoCaptura ? null : saltoUltrasonico();
+  if (salto) {
+    ultra += ` Además sus medidas saltan entre ${coma(salto.min)} y ${coma(salto.max)} cm con la bandeja quieta: ` +
+      'está recibiendo ecos de otra cosa (paredes, el borde de la bandeja o lo que hay debajo). Apúntalo derecho al centro de la bandeja.';
+  }
+  cajaUltra.dataset.ve = n.ultraVe ? 'si' : salto ? 'alerta' : 'no';
   cajaUltra.querySelector('dd').textContent = ultra;
 
   const cajaRes = $('#dep-paso-res');
