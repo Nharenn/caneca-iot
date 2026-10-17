@@ -1,7 +1,7 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.6';
+const VERSION_PAGINA = '2026-10-17.7';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
 const FIRMWARE_ESPERADO = '2026-10-17.5';
 // Zona sugerida para la caja de MDF (en % de la imagen)
@@ -318,7 +318,7 @@ function pintarVersion() {
   aviso.textContent = igual
     ? ''
     : `El servidor tiene otra versión (${app.versionServidor || 'vieja'}) que esta página (${VERSION_PAGINA}), y por eso algunos botones pueden fallar. ` +
-      'Si el servidor está en tu computador: ciérralo con Ctrl+C, ábrelo otra vez con npm start y recarga esta página. Si está en el hosting, espera un minuto a que termine de desplegar y recarga.';
+      'Si el servidor está en tu computador: ciérralo con Ctrl+C, ábrelo otra vez con npm start y recarga esta página. Si está en el hosting, espera un minuto a que termine de desplegar y recarga (Cmd+Shift+R en Mac, Ctrl+F5 en Windows).';
 }
 
 // Comparar versiones tipo 2026-10-17.5 (número por número)

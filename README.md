@@ -78,5 +78,7 @@ node herramientas/simular-caneca.js   # (otra terminal) una caneca de mentira, s
 | `herramientas/simular-caneca.js` | Simula la placa para probar sin hardware |
 | `.env.example` | La configuración, sin claves |
 
+El CDN de Hostinger guarda `app.js` y `estilos.css`; por eso el servidor arma la página con `?v=<huella>` en esas dos direcciones y cada cambio llega al navegador sin quedarse con la versión vieja.
+
 Los datos (conteos, historial, fotos y capturas) se guardan en `datos/`; en el hosting pueden borrarse al volver a desplegar.
-La página y el servidor llevan la misma versión (`2026-10-17.6`). El programa de la placa va por su cuenta (`2026-10-17.5`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
+La página y el servidor llevan la misma versión (`2026-10-17.7`). El programa de la placa va por su cuenta (`2026-10-17.5`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.

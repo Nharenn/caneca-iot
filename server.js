@@ -12,13 +12,14 @@
 
 // La página (public/app.js) y el programa de la placa llevan esta misma versión.
 // Si no coinciden, el monitor lo avisa (por ejemplo: servidor viejo todavía prendido).
-const VERSION = '2026-10-17.6';
+const VERSION = '2026-10-17.7';
 
 const fs = require('fs');
 const path = require('path');
 // el .env se busca junto a server.js (en el hosting la carpeta de trabajo puede ser otra)
 require('dotenv').config({ quiet: true, path: path.join(__dirname, '.env') });
 const http = require('http');
+const crypto = require('crypto');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 
@@ -652,6 +653,17 @@ function manejarMonitor(ws, texto) {
 // ---------------------------------------------------------------------------
 const app = express();
 app.disable('x-powered-by');
+// La página lleva app.js y estilos.css con ?v=<huella de su contenido>: el CDN del hosting guarda esos
+// archivos por su dirección, así que cada cambio tiene una dirección nueva y nadie recibe la versión vieja.
+const huella = (archivo) =>
+  crypto.createHash('sha1').update(fs.readFileSync(path.join(__dirname, 'public', archivo))).digest('hex').slice(0, 10);
+const PAGINA = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
+  .replace('src="app.js"', `src="app.js?v=${huella('app.js')}"`)
+  .replace('href="estilos.css"', `href="estilos.css?v=${huella('estilos.css')}"`);
+app.get(['/', '/index.html'], (_req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(PAGINA);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/resumen', (_req, res) => res.json(resumen()));
 
