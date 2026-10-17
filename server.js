@@ -12,7 +12,7 @@
 
 // La página (public/app.js) y el programa de la placa llevan esta misma versión.
 // Si no coinciden, el monitor lo avisa (por ejemplo: servidor viejo todavía prendido).
-const VERSION = '2026-10-17.5';
+const VERSION = '2026-10-17.6';
 
 const fs = require('fs');
 const path = require('path');

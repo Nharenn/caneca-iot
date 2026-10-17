@@ -3,11 +3,15 @@
 Servidor en Node.js de la caneca clasificadora: recibe la cámara de la ESP32-CAM por WebSocket, le pregunta a
 Gemini qué residuo es, le dice a la caneca a qué lado inclinar la bandeja y sirve el monitor en línea.
 
-- **Monitor:** cámara en vivo, sensores (ultrasónico y cámara), botones, análisis e historial con la foto de cada clasificación.
+- **Monitor** en cuatro pestañas (arriba en el PC, abajo en el celular): **En vivo** (cámara, botones de cada lado y
+  sensores con medidores), **Calibrar**, **Análisis** e **Historial** con la foto de cada clasificación.
 - **Control:** todos miran; con el PIN maneja **una sola persona**. Si otra pone el PIN queda en fila y el control
   le pasa cuando la primera toca "Terminar", cierra la página o lleva 3 minutos sin tocar nada mientras alguien espera.
-- **Depuración paso a paso:** bandeja vacía guardada, lo que ve ahora y qué cambió, con los números de la cámara y del
-  ultrasónico. Se guardan capturas ("No detectó", "Detectó sin residuo", "Clasificó mal") para revisarlas después.
+  Cuando un botón está bloqueado, la página dice por qué.
+- **Calibrar:** bandeja vacía guardada, lo que ve ahora y qué cambió, en 4 pasos (bandeja vacía, zona, sensibilidad,
+  qué decide). La zona se arrastra en la imagen y la sensibilidad se prueba con una regla: todo se ve al instante y la
+  caneca lo usa al tocar **Guardar en la caneca** (necesita el control). Se guardan capturas ("No lo detectó",
+  "Detectó algo con la bandeja vacía", "Lo clasificó mal") para revisarlas después.
 - **Lados:** aprovechables = 150° (lado del 180), no aprovechables = 30° (lado del 0). Vaciar va por separado a cada lado.
 
 > El archivo `.env` con la clave de Gemini **no está en este repositorio** (y no debe subirse nunca).
@@ -75,4 +79,4 @@ node herramientas/simular-caneca.js   # (otra terminal) una caneca de mentira, s
 | `.env.example` | La configuración, sin claves |
 
 Los datos (conteos, historial, fotos y capturas) se guardan en `datos/`; en el hosting pueden borrarse al volver a desplegar.
-La versión de la página, del servidor y del programa de la placa es la misma (`2026-10-17.4`); si no coinciden, el monitor lo avisa.
+La página y el servidor llevan la misma versión (`2026-10-17.6`). El programa de la placa va por su cuenta (`2026-10-17.5`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
