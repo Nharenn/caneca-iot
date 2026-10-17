@@ -1,9 +1,9 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.8';
+const VERSION_PAGINA = '2026-10-17.9';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
-const FIRMWARE_ESPERADO = '2026-10-17.6';
+const FIRMWARE_ESPERADO = '2026-10-17.7';
 // Zona sugerida para la caja de MDF (en % de la imagen)
 const ZONA_SUGERIDA = { x0: 22, x1: 74, y0: 7, y1: 60 };
 
@@ -1288,6 +1288,7 @@ function pintarPasos(n) {
   if (Number.isFinite(n.corrimiento)) tec.push(`Brillo general corregido en ${n.corrimiento > 0 ? '+' : ''}${n.corrimiento}.`);
   if (Number.isFinite(n.movPct)) tec.push(`Movimiento entre imágenes: ${n.movPct} %.`);
   if (n.fase) tec.push(`Fase: ${n.fase.replace(/_/g, ' ')}.`);
+  if (n.bytes) tec.push(`Colores de la cámara: byte ${n.bytes}.`);
   $('#dep-tecnico').textContent = tec.join(' ') || 'Sin datos.';
 }
 

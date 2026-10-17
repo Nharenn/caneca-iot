@@ -13,7 +13,7 @@ const path = require('path');
 require('dotenv').config({ quiet: true, path: path.join(__dirname, '..', '.env') });
 const WebSocket = require('ws');
 
-const VERSION = '2026-10-17.6'; // la del programa de la placa
+const VERSION = '2026-10-17.7'; // la del programa de la placa
 const base = (process.argv[2] || `ws://localhost:${process.env.PORT || process.env.PUERTO || 3000}`).replace(/\/$/, '');
 const token = encodeURIComponent(process.env.TOKEN_DISPOSITIVO || '');
 const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));

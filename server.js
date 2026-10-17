@@ -16,7 +16,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-17.8';
+const VERSION = '2026-10-17.9';
 
 const fs = require('fs');
 const os = require('os');
