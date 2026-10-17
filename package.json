@@ -1,0 +1,19 @@
+{
+  "name": "caneca-monitor",
+  "version": "1.0.0",
+  "description": "Monitor online de la caneca clasificadora: cámara, servo y conteos en tiempo real",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "prueba": "node server.js --prueba"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.6",
+    "express": "^5.2.1",
+    "ws": "^8.22.0"
+  }
+}

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitor de la caneca</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="cabecera">
+    <h1>Caneca clasificadora</h1>
+    <p class="conexion" id="conexion" data-estado="conectando">
+      <span class="conexion-punto" aria-hidden="true"></span>
+      <span id="conexion-texto">Conectando con el servidor…</span>
+    </p>
+  </header>
+
+  <p class="aviso-version" id="aviso-version" role="alert" hidden></p>
+
+  <main>
+    <section class="consola" aria-label="Cámara y control de la bandeja">
+      <button class="lado lado-izq lado-negra" type="button" data-orden="no_aprovechables" id="btn-no">
+        <span class="lado-accion">No aprovechables</span>
+        <span class="lado-destino" id="destino-no">Lado del 0 · 30°</span>
+      </button>
+
+      <figure class="camara" id="camara" data-estado="sin-imagen">
+        <img id="camara-img" alt="Imagen en vivo de la bandeja">
+        <figcaption class="camara-vacia" id="camara-vacia">Esperando imagen de la cámara</figcaption>
+        <span class="en-vivo" id="en-vivo">En vivo</span>
+      </figure>
+
+      <button class="lado lado-der lado-blanca" type="button" data-orden="aprovechables" id="btn-si">
+        <span class="lado-accion">Aprovechables</span>
+        <span class="lado-destino" id="destino-si">Lado del 180 · 150°</span>
+      </button>
+    </section>
+
+    <section class="control" id="control" data-estado="mirando" aria-label="Quién maneja la caneca">
+      <div class="control-info">
+        <p class="control-titulo" id="control-titulo">Estás mirando</p>
+        <p class="control-texto" id="control-texto">Para manejar la caneca escribe el PIN.</p>
+      </div>
+      <form class="control-form" id="form-control">
+        <label class="pin">
+          <span>PIN</span>
+          <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+        </label>
+        <button type="submit" id="btn-control">Tomar el control</button>
+      </form>
+      <button type="button" id="btn-soltar" class="control-soltar" hidden>Terminar y dejar el control</button>
+    </section>
+
+    <section class="acciones" aria-label="Acciones">
+      <button type="button" data-orden="nivel">Nivelar bandeja</button>
+      <button type="button" data-orden="vaciar_aprovechables" title="Pone la bandeja de canto hacia aprovechables (150° y luego hasta 160°) para sacar esa bolsa">Vaciar aprovechables</button>
+      <button type="button" data-orden="vaciar_no_aprovechables" title="Pone la bandeja de canto hacia no aprovechables (30° y luego hasta 20°) para sacar esa bolsa">Vaciar no aprovechables</button>
+      <button type="button" data-orden="clasificar" class="principal">Clasificar ahora</button>
+      <button type="button" data-orden="pausa" id="btn-pausa">Pausar clasificación</button>
+      <button type="button" data-orden="flash" id="btn-flash">Prender flash</button>
+    </section>
+    <p class="aviso" id="aviso" role="status" aria-live="polite"></p>
+
+    <section class="sensores" aria-labelledby="titulo-sensores">
+      <h2 id="titulo-sensores">Sensores en vivo</h2>
+      <p class="sensores-aviso" id="aviso-fw" hidden></p>
+      <dl class="sensores-lista">
+        <div class="sensor" id="s-ultra" data-ve="no">
+          <dt>Ultrasónico (distancia a la bandeja)</dt>
+          <dd><b id="s-dist">—</b><span id="s-dist-sub">Sin datos</span></dd>
+        </div>
+        <div class="sensor" id="s-cam" data-ve="no">
+          <dt>Cámara (cuánto cambió la bandeja)</dt>
+          <dd><b id="s-campct">—</b><span id="s-cam-sub">Sin datos</span></dd>
+        </div>
+        <div class="sensor" id="s-det">
+          <dt>Detección</dt>
+          <dd><b id="s-detec">Sin datos</b><span id="s-detec-sub"></span></dd>
+        </div>
+        <div class="sensor">
+          <dt>Servo</dt>
+          <dd><b id="s-servo">—</b><span id="s-modo">Sin datos</span></dd>
+        </div>
+      </dl>
+      <p class="sensores-pie" id="s-pie">Wi-Fi: sin datos</p>
+    </section>
+
+    <details class="depuracion" id="depuracion">
+      <summary>Depuración paso a paso: qué ve la caneca y por qué detecta o no</summary>
+      <div class="dep-cuerpo">
+        <div class="dep-fuente">
+          <p id="dep-fuente">Abriendo… la caneca manda una imagen cada segundo mientras esta sección está abierta.</p>
+          <button type="button" id="dep-vivo" hidden>Volver a en vivo</button>
+        </div>
+        <div class="dep-imagenes">
+          <figure><canvas id="dep-ref" width="320" height="240"></canvas><figcaption><b>1.</b> Bandeja vacía guardada <span id="dep-ref-edad"></span></figcaption></figure>
+          <figure><canvas id="dep-cur" width="320" height="240"></canvas><figcaption><b>2.</b> Lo que ve ahora</figcaption></figure>
+          <figure><canvas id="dep-dif" width="320" height="240"></canvas><figcaption><b>3.</b> Qué cambió: <i class="m m-brillo"></i> brillo <i class="m m-borde"></i> bordes · <i class="m m-zona"></i> zona que se revisa</figcaption></figure>
+          <figure id="dep-foto-fig" hidden><img id="dep-foto" alt="Foto en color de la captura"><figcaption>Foto en color de ese momento</figcaption></figure>
+        </div>
+        <ol class="dep-pasos">
+          <li id="dep-paso-cam"><b>4. Cámara:</b> <span>sin datos</span></li>
+          <li id="dep-paso-ultra"><b>5. Ultrasónico:</b> <span>sin datos</span></li>
+          <li id="dep-paso-res"><b>6. Resultado:</b> <span>sin datos</span></li>
+        </ol>
+        <div class="dep-acciones">
+          <button type="button" id="dep-congelar">Congelar imagen</button>
+          <button type="button" data-orden="referencia" title="Toma ya la foto y la distancia de la bandeja vacía (déjala vacía y sin manos)">Guardar bandeja vacía ahora</button>
+          <label class="dep-nota">Nota (opcional)<input id="dep-nota" maxlength="200" placeholder="qué había en la bandeja"></label>
+          <button type="button" class="dep-captura principal" data-tipo="no_detecto" data-clasificar="1">No detectó: guardar y clasificar</button>
+          <button type="button" class="dep-captura" data-tipo="falsa">Detectó sin residuo: guardar</button>
+          <button type="button" class="dep-captura" data-tipo="mal_clasificado">Clasificó mal: guardar</button>
+          <button type="button" class="dep-captura" data-tipo="otra">Guardar captura</button>
+        </div>
+        <form class="dep-ajustes" id="form-camara">
+          <label>Hay residuo desde (%)<input id="umbral-cam" type="number" min="1" max="30" step="1" required></label>
+          <label>Zona: izquierda (%)<input id="zona-x0" type="number" min="0" max="100" step="1" required></label>
+          <label>derecha (%)<input id="zona-x1" type="number" min="0" max="100" step="1" required></label>
+          <label>arriba (%)<input id="zona-y0" type="number" min="0" max="100" step="1" required></label>
+          <label>abajo (%)<input id="zona-y1" type="number" min="0" max="100" step="1" required></label>
+          <button type="submit" id="btn-ajustes">Guardar ajustes de la cámara</button>
+        </form>
+        <p class="ajustes-nota">La zona (rectángulo amarillo) debe cubrir solo la bandeja, sin paredes ni la prensa. Para el %: mira cuánto marca con la bandeja vacía y con un papel o una tapa, y pon un valor entre los dos (más bajo = más sensible).</p>
+        <h3>Capturas guardadas</h3>
+        <ol class="dep-capturas" id="dep-capturas"></ol>
+        <p class="historial-vacio" id="dep-capturas-vacio">Todavía no hay capturas. Cuando algo falle, toca uno de los botones de arriba y queda guardado aquí para revisarlo.</p>
+      </div>
+    </details>
+
+    <section class="analisis" aria-labelledby="titulo-analisis">
+      <div class="analisis-cabeza">
+        <h2 id="titulo-analisis">Análisis</h2>
+        <button type="button" id="btn-reiniciar" class="discreto">Reiniciar estadísticas</button>
+      </div>
+
+      <div class="tasa">
+        <div class="tasa-cifra">
+          <span class="etiqueta">Tasa de aprovechamiento</span>
+          <b id="tasa-pct">—</b>
+          <span class="tasa-sub" id="tasa-sub">Todavía no hay residuos clasificados</span>
+        </div>
+        <div class="tasa-barra" id="tasa-barra" role="img" aria-label="Proporción de aprovechables y no aprovechables">
+          <span class="seg seg-si" id="seg-si" style="width:0%"></span>
+          <span class="seg seg-no" id="seg-no" style="width:0%"></span>
+        </div>
+        <div class="tasa-leyenda">
+          <span><i class="punto punto-si"></i>Aprovechables <b id="n-si">0</b></span>
+          <span><i class="punto punto-no"></i>No aprovechables <b id="n-no">0</b></span>
+        </div>
+      </div>
+
+      <dl class="cifras">
+        <div><dt>Residuos clasificados</dt><dd id="k-total">0</dd></div>
+        <div><dt>Últimas 24 horas</dt><dd id="k-24h">0</dd></div>
+        <div><dt>Última hora</dt><dd id="k-hora">0</dd></div>
+        <div><dt>Respuesta de la IA</dt><dd id="k-ia">—</dd></div>
+      </dl>
+
+      <div class="desgloses">
+        <div class="desglose desglose-si">
+          <h3>Aprovechables por tipo</h3>
+          <ol class="barras" id="barras-si"></ol>
+        </div>
+        <div class="desglose desglose-no">
+          <h3>No aprovechables por tipo</h3>
+          <ol class="barras" id="barras-no"></ol>
+        </div>
+      </div>
+
+      <div class="actividad">
+        <h3>Actividad de las últimas 24 horas</h3>
+        <div class="columnas" id="columnas" role="img" aria-label="Residuos por hora en las últimas 24 horas"></div>
+        <div class="columnas-eje" id="columnas-eje"></div>
+      </div>
+    </section>
+
+    <section class="estado" aria-label="Última clasificación">
+      <div class="ultima">
+        <h2>Última clasificación</h2>
+        <p id="ultima-texto">Todavía no hay clasificaciones.</p>
+        <a id="ultima-foto" href="/ultima.jpg" target="_blank" rel="noopener" hidden>Ver la foto que se clasificó</a>
+      </div>
+      <div class="pagina-caneca">
+        <h2>Página de la caneca (Wi-Fi)</h2>
+        <p id="e-pagina">http://192.168.4.1 en la red Caneca-IoT</p>
+      </div>
+    </section>
+
+
+    <section class="historial" aria-labelledby="titulo-historial">
+      <h2 id="titulo-historial">Historial</h2>
+      <ol class="historial-lista" id="historial"></ol>
+      <p class="historial-vacio" id="historial-vacio">Cuando la caneca clasifique o se mueva la bandeja, aparece aquí.</p>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

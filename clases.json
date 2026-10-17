@@ -1,0 +1,24 @@
+{
+  "_ayuda": "Tabla de clases que reconoce la caneca. id: lo que responde la IA (minúsculas, sin tildes, máx. 15 letras). caneca: blanca (aprovechables), verde (orgánicos), negra (no aprovechables), especial (pilas, electrónicos, medicamentos) o ninguna (bandeja vacía). ejemplos: lo que se le explica a la IA. Puedes agregar, quitar o mover clases aquí sin tocar el código.",
+  "clases": [
+    { "id": "carton", "nombre": "Cartón", "caneca": "blanca", "ejemplos": "cajas, cartón corrugado, tubos de papel higiénico; limpio y seco" },
+    { "id": "papel", "nombre": "Papel", "caneca": "blanca", "ejemplos": "hojas, cuadernos, periódico, revistas, sobres, facturas; limpio y seco" },
+    { "id": "plastico", "nombre": "Plástico", "caneca": "blanca", "ejemplos": "botellas PET, envases de yogur o aseo, tapas, bolsas, vasos y cubiertos plásticos; limpios" },
+    { "id": "vidrio", "nombre": "Vidrio", "caneca": "blanca", "ejemplos": "botellas y frascos de vidrio enteros" },
+    { "id": "metal", "nombre": "Metal", "caneca": "blanca", "ejemplos": "latas de bebida o de conserva, tapas metálicas, papel aluminio limpio, objetos pequeños de metal" },
+    { "id": "tetrapak", "nombre": "Tetra Pak", "caneca": "blanca", "ejemplos": "cajas de leche o jugo (cartón con aluminio por dentro)" },
+    { "id": "organico", "nombre": "Orgánico", "caneca": "verde", "ejemplos": "cáscaras, restos de frutas y verduras, sobras de comida, cuncho de café, cáscaras de huevo, pan" },
+    { "id": "jardin", "nombre": "Jardín", "caneca": "verde", "ejemplos": "hojas secas, flores, pasto, ramas pequeñas" },
+    { "id": "sanitario", "nombre": "Sanitario", "caneca": "negra", "ejemplos": "papel higiénico usado, servilletas, pañuelos, toallas de cocina, pañales, toallas higiénicas, tapabocas" },
+    { "id": "contaminado", "nombre": "Contaminado", "caneca": "negra", "ejemplos": "papel, cartón o empaques sucios con comida o grasa, como cajas de pizza o platos desechables usados" },
+    { "id": "metalizado", "nombre": "Empaque metalizado", "caneca": "negra", "ejemplos": "paquetes de papas o snacks, envolturas de dulces, galletas y chocolates" },
+    { "id": "icopor", "nombre": "Icopor", "caneca": "negra", "ejemplos": "icopor, platos, vasos y bandejas de icopor" },
+    { "id": "colilla", "nombre": "Colillas y chicles", "caneca": "negra", "ejemplos": "colillas de cigarrillo, chicles, cenizas" },
+    { "id": "ceramica", "nombre": "Cerámica y loza", "caneca": "negra", "ejemplos": "pocillos, platos o materas rotas de cerámica o loza" },
+    { "id": "pilas", "nombre": "Pilas", "caneca": "especial", "ejemplos": "pilas y baterías" },
+    { "id": "electronico", "nombre": "Electrónico", "caneca": "especial", "ejemplos": "celulares, cargadores, cables, audífonos, bombillos" },
+    { "id": "medicamento", "nombre": "Medicamento", "caneca": "especial", "ejemplos": "pastillas, blísteres con pastillas, jarabes, jeringas" },
+    { "id": "vacio", "nombre": "Bandeja vacía", "caneca": "ninguna", "ejemplos": "la bandeja sin nada encima" },
+    { "id": "otro", "nombre": "Otro", "caneca": "negra", "ejemplos": "cualquier cosa que no encaje en las demás o que no se vea bien" }
+  ]
+}
