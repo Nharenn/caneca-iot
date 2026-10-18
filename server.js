@@ -17,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-18.3';
+const VERSION = '2026-10-18.4';
 
 const fs = require('fs');
 const os = require('os');
@@ -342,6 +342,17 @@ function precision() {
     else errores[`${dijo}>${real}`] = (errores[`${dijo}>${real}`] || 0) + 1;
   }
   const clasificaciones = datos.eventos.filter((e) => e.tipo === 'clasificacion' && e.clase !== 'error');
+  // Detección de la cámara: de los avisos automáticos, cuántos tenían algo de verdad (un residuo o una mano) y
+  // cuántos fueron con la bandeja vacía. Si la persona revisó la clasificación, cuenta lo que dijo que era.
+  const deteccion = { avisos: 0, residuo: 0, mano: 0, vacio: 0 };
+  for (const e of clasificaciones) {
+    if (e.origen !== 'auto') continue;
+    const real = e.revision ? e.revision.real : e.clase;
+    deteccion.avisos++;
+    if (real === 'vacio') deteccion.vacio++;
+    else if (real === 'mano') deteccion.mano++;
+    else deteccion.residuo++;
+  }
   return {
     revisadas: revs.length,
     aciertos: revs.filter((r) => r.ok).length,
@@ -351,6 +362,7 @@ function precision() {
     sinResiduo: Object.fromEntries(SIN_RESIDUO.map((c) => [c, datos.conteos[c] || 0])),
     caidas: datos.caidas,
     noDetecto: datos.noDetecto,
+    deteccion, // de los últimos eventos guardados (hasta 200)
   };
 }
 

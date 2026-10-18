@@ -2152,6 +2152,17 @@ li[data-tipo='vacio'] .historial-que strong {
   border: 1px solid var(--linea);
 }
 
+.precision-sub {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.9375rem;
+}
+
+.cifras-camara {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0;
+  border: 1px solid var(--linea);
+}
+
 .cifras small {
   display: block;
   margin-top: 0.125rem;
@@ -2191,6 +2202,10 @@ li[data-tipo='vacio'] .historial-que strong {
 @media (max-width: 900px) {
   .cifras-precision {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cifras-camara {
+    grid-template-columns: 1fr;
   }
 
   .precision-detalle {

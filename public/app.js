@@ -1,7 +1,7 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-18.3';
+const VERSION_PAGINA = '2026-10-18.4';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
 const FIRMWARE_ESPERADO = '2026-10-17.9';
 // Zona sugerida para la caja de MDF (en % de la imagen)
@@ -684,6 +684,22 @@ function pintarPrecision() {
   $('#p-falsos').textContent = fmt.format(manos + vacias);
   $('#p-falsos-sub').textContent = `${manos} ${manos === 1 ? 'mano' : 'manos'} y ${vacias} con la bandeja vacía: la IA no movió la bandeja`;
   $('#p-nodetecto').textContent = fmt.format(p.noDetecto || 0);
+
+  // Detección con la cámara. Precisión: de los avisos automáticos, los que tenían algo (residuo o mano).
+  // Sensibilidad: de los residuos que pusieron, los que vio sola (los otros se avisan con "Puse algo y no lo detectó").
+  const d = p.deteccion || { avisos: 0, residuo: 0, mano: 0, vacio: 0 };
+  const conAlgo = d.residuo + d.mano;
+  $('#p-cam-precision').textContent = d.avisos ? `${pct(conAlgo, d.avisos)} %` : '—';
+  $('#p-cam-precision-sub').textContent = d.avisos
+    ? `${conAlgo} de ${d.avisos} avisos automáticos tenían algo en la bandeja; ${d.vacio} con la bandeja vacía`
+    : 'de los avisos automáticos tenían algo en la bandeja';
+  const puestos = d.residuo + (p.noDetecto || 0);
+  $('#p-cam-sensibilidad').textContent = puestos ? `${pct(d.residuo, puestos)} %` : '—';
+  $('#p-cam-sensibilidad-sub').textContent = puestos
+    ? `vio sola ${d.residuo} de ${puestos} residuos (${p.noDetecto || 0} ${(p.noDetecto || 0) === 1 ? 'avisado' : 'avisados'} con "Puse algo y no lo detectó")`
+    : 'de los residuos los vio sola';
+  $('#p-cam-avisos').textContent = fmt.format(d.avisos);
+  $('#p-cam-avisos-sub').textContent = `${d.residuo} ${d.residuo === 1 ? 'residuo' : 'residuos'}, ${d.mano} ${d.mano === 1 ? 'mano' : 'manos'} y ${d.vacio} con la bandeja vacía`;
 
   const lista = $('#p-pordijo');
   lista.replaceChildren();
