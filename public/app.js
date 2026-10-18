@@ -1,9 +1,9 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.10';
+const VERSION_PAGINA = '2026-10-17.11';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
-const FIRMWARE_ESPERADO = '2026-10-17.8';
+const FIRMWARE_ESPERADO = '2026-10-17.9';
 // Zona sugerida para la caja de MDF (en % de la imagen)
 const ZONA_SUGERIDA = { x0: 22, x1: 74, y0: 7, y1: 60 };
 
@@ -907,6 +907,42 @@ function controlesRevision(evento) {
   return caja;
 }
 
+// Lo que midió la placa al revisar si cayó (programa 2026-10-17.9 o más nuevo)
+function textoVerificacion(e) {
+  const v = e.verif;
+  if (!v) return null;
+  const partes = [];
+  if (v.residuo !== null && v.residuo !== undefined) partes.push(`la cámara seguía viendo el ${v.residuo} % del residuo`);
+  else if (v.zona !== null && v.zona !== undefined) partes.push(`la cámara veía distinto el ${v.zona} % de la bandeja`);
+  if (v.cm !== null && v.cm !== undefined && v.vacia) partes.push(`el ultrasónico medía ${coma(v.cm)} cm (vacía ${coma(v.vacia)})`);
+  return partes.length ? `Al revisar, ${partes.join(' y ')}.` : null;
+}
+
+// Si el residuo cayó, y para corregirlo cuando la placa se equivocó (cuenta en el % de caídas de Análisis)
+function controlesCaida(evento) {
+  if (typeof evento.cayo !== 'boolean') return null;
+  const caja = document.createElement('div');
+  caja.className = 'chips caida';
+  const corregido = typeof evento.cayoPlaca === 'boolean';
+  caja.append(chip(evento.cayo ? (corregido ? 'Cayó (lo corregiste)' : 'Cayó') : corregido ? 'No cayó (lo corregiste)' : 'No cayó',
+    evento.cayo ? 'ok' : 'mal'));
+  if (manejo()) {
+    if (corregido) {
+      caja.append(boton('Deshacer', 'boton-texto', () => mandar({ t: 'corregirCaida', id: evento.id, cayo: evento.cayoPlaca })));
+    } else if (!evento.cayo) {
+      caja.append(boton('Sí cayó', 'boton-texto', () => mandar({ t: 'corregirCaida', id: evento.id, cayo: true })));
+    }
+  }
+  const texto = !evento.cayo || corregido ? textoVerificacion(evento) : null;
+  if (texto) {
+    const nota = document.createElement('small');
+    nota.className = 'caida-nota';
+    nota.textContent = texto;
+    caja.append(nota);
+  }
+  return caja;
+}
+
 function pintarHistorial() {
   const lista = $('#historial');
   lista.replaceChildren();
@@ -935,11 +971,8 @@ function pintarHistorial() {
       que.append(detalle);
     }
     if (evento.tipo === 'clasificacion') {
-      const chips = document.createElement('div');
-      chips.className = 'chips';
-      if (evento.cayo === true) chips.append(chip('Cayó', 'ok'));
-      if (evento.cayo === false) chips.append(chip('No cayó', 'mal'));
-      if (chips.childElementCount) que.append(chips);
+      const chips = controlesCaida(evento);
+      if (chips) que.append(chips);
       const revisar = controlesRevision(evento);
       if (revisar) que.append(revisar);
     }

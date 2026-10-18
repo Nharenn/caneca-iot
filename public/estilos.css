@@ -2059,6 +2059,22 @@ li[data-tipo='captura'] .historial-que strong::before {
   font-weight: 620;
 }
 
+.chips.caida {
+  align-items: center;
+  column-gap: 0.5rem;
+}
+
+.chips.caida .boton-texto {
+  padding: 0.125rem 0;
+  font-size: 0.8125rem;
+}
+
+.caida-nota {
+  flex-basis: 100%;
+  color: var(--tinta-2);
+  font-size: 0.8125rem;
+}
+
 .chip[data-tipo='ok'] {
   background: var(--verde-suave);
   color: var(--verde);

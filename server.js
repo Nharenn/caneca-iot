@@ -17,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-17.10';
+const VERSION = '2026-10-17.11';
 
 const fs = require('fs');
 const os = require('os');
@@ -656,6 +656,17 @@ function manejarTextoEsp(texto) {
     if (ev) {
       ev.cayo = Boolean(m.cayo);
       if (Number(m.intentos) > 1) ev.intentos = Number(m.intentos);
+      // lo que midió la placa al revisar (desde el programa 2026-10-17.9): para ver por qué decidió eso
+      const verif = {
+        residuo: num(m.camResiduo), // % de donde estaba el residuo que seguía distinto
+        zona: num(m.camZona), // % de toda la zona distinto a la bandeja vacía
+        cm: num(m.cm),
+        alto: num(m.alto), // cuánto acortaba el residuo al ultrasónico antes de inclinar
+        vacia: num(m.vacia),
+        porCamara: m.porCamara === true,
+        porUltra: m.porUltra === true,
+      };
+      if (verif.residuo !== null || verif.zona !== null || verif.cm !== null) ev.verif = verif;
       datos.caidas[ev.cayo ? 'si' : 'no']++;
       actualizarEvento(ev);
     }
@@ -837,6 +848,21 @@ function revisarClasificacion(ws, m) {
   actualizarEvento(ev);
 }
 
+// La placa dijo "no cayó" (o "cayó") y la persona vio otra cosa: se corrige en el historial y en el % de caídas
+function corregirCaida(ws, m) {
+  const ev = datos.eventos.find((e) => e.id === Number(m.id) && e.tipo === 'clasificacion');
+  if (!ev || typeof ev.cayo !== 'boolean' || typeof m.cayo !== 'boolean') {
+    return enviar(ws, { t: 'error', msg: 'No se puede corregir esa caída.' });
+  }
+  if (ev.cayo === m.cayo) return;
+  if (ev.cayoPlaca === undefined) ev.cayoPlaca = ev.cayo; // lo que dijo la placa, la primera vez
+  datos.caidas[ev.cayo ? 'si' : 'no'] = Math.max(0, datos.caidas[ev.cayo ? 'si' : 'no'] - 1);
+  datos.caidas[m.cayo ? 'si' : 'no']++;
+  ev.cayo = m.cayo;
+  if (ev.cayo === ev.cayoPlaca) delete ev.cayoPlaca;
+  actualizarEvento(ev);
+}
+
 function manejarMonitor(ws, texto) {
   let m;
   try {
@@ -864,6 +890,9 @@ function manejarMonitor(ws, texto) {
   } else if (m.t === 'revisar') {
     if (!tieneControl(ws)) return;
     revisarClasificacion(ws, m);
+  } else if (m.t === 'corregirCaida') {
+    if (!tieneControl(ws)) return;
+    corregirCaida(ws, m);
   } else if (m.t === 'reiniciar') {
     if (!tieneControl(ws)) return;
     datos.conteos = Object.fromEntries(CLASES.map((c) => [c, 0]));

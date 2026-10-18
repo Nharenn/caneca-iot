@@ -13,7 +13,7 @@ const path = require('path');
 require('dotenv').config({ quiet: true, path: path.join(__dirname, '..', '.env') });
 const WebSocket = require('ws');
 
-const VERSION = '2026-10-17.8'; // la del programa de la placa
+const VERSION = '2026-10-17.9'; // la del programa de la placa
 const base = (process.argv[2] || `ws://localhost:${process.env.PORT || process.env.PUERTO || 3000}`).replace(/\/$/, '');
 const token = encodeURIComponent(process.env.TOKEN_DISPOSITIVO || '');
 const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));
@@ -90,7 +90,12 @@ function inclinar(lado, origen) {
     mandarEstado();
     // como la placa: después de inclinar revisa si el residuo cayó (casi siempre sí)
     const cayo = Math.random() > 0.15;
-    ws.send(JSON.stringify({ t: 'caida', cayo, intentos: cayo ? 1 : 2 }));
+    // como la placa: lo que midió al revisar (donde estaba el residuo, toda la zona y el ultrasónico)
+    ws.send(JSON.stringify({
+      t: 'caida', cayo, intentos: cayo ? 1 : 2,
+      camResiduo: cayo ? 4 : 86, camZona: cayo ? 1 : 9, cm: cayo ? 23.7 : 21.9, alto: 1.8, vacia: 23.7,
+      porCamara: !cayo, porUltra: !cayo,
+    }));
   }, 1500);
 }
 

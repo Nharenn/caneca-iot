@@ -18,6 +18,11 @@ bandeja vacía que se toma al calibrar, y piensa lo mínimo (`thinkingLevel: min
   cámara (%) y el ultrasónico (cm). Todo se ve al instante y la caneca lo usa al tocar **Guardar en la caneca**.
 - **Historial:** en cada clasificación, **¿Acertó? Sí / No** (y qué era: aprovechable, no aprovechable, una mano o
   vacía), si el residuo **cayó**, y "Puse algo y no lo detectó". **Análisis** saca de ahí el % de acierto y de error.
+  Cuando la caneca dice **No cayó**, el historial muestra qué midió al revisar (cuánto del residuo seguía viendo la
+  cámara y la distancia del ultrasónico) y, si sí cayó, el botón **Sí cayó** lo corrige (también en el % de Análisis).
+- **¿Cayó?** Al inclinar, la placa guarda dónde estaba el residuo; al volver suelta el servo, espera a que la imagen
+  se quede quieta y mira solo ese sitio (los bordes de la bandeja corridos un punto ya no cuentan como "sigue ahí").
+  Si parece que sigue, vuelve a mirar antes de inclinar otra vez o avisar.
 - **Lados:** aprovechables = 150° (lado del 180), no aprovechables = 30° (lado del 0). Vaciar va por separado a cada lado.
 
 > El archivo `.env` con la clave de Gemini **no está en este repositorio** (y no debe subirse nunca).
@@ -89,4 +94,4 @@ El CDN de Hostinger guarda `app.js` y `estilos.css`; por eso el servidor arma la
 Los datos (conteos, historial, revisiones, fotos y capturas) se guardan, en el hosting, en `~/caneca-datos` (fuera de
 la carpeta del programa, para que no se borren al volver a desplegar; `/api/salud` dice `"fueraDelPrograma": true`).
 En el Mac quedan en `datos/`. La variable `DIR_DATOS` cambia la carpeta.
-La página y el servidor llevan la misma versión (`2026-10-17.10`). El programa de la placa va por su cuenta (`2026-10-17.8`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
+La página y el servidor llevan la misma versión (`2026-10-17.11`). El programa de la placa va por su cuenta (`2026-10-17.9`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
