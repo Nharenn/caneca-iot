@@ -17,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-17.11';
+const VERSION = '2026-10-17.12';
 
 const fs = require('fs');
 const os = require('os');
@@ -939,7 +939,10 @@ const huella = (archivo) =>
   crypto.createHash('sha1').update(fs.readFileSync(path.join(__dirname, 'public', archivo))).digest('hex').slice(0, 10);
 const PAGINA = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8')
   .replace('src="app.js"', `src="app.js?v=${huella('app.js')}"`)
-  .replace('href="estilos.css"', `href="estilos.css?v=${huella('estilos.css')}"`);
+  .replace('href="estilos.css"', `href="estilos.css?v=${huella('estilos.css')}"`)
+  .replace('href="favicon.svg"', `href="favicon.svg?v=${huella('favicon.svg')}"`)
+  .replace('href="favicon-32.png"', `href="favicon-32.png?v=${huella('favicon-32.png')}"`)
+  .replace('href="apple-touch-icon.png"', `href="apple-touch-icon.png?v=${huella('apple-touch-icon.png')}"`);
 app.get(['/', '/index.html'], (_req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.type('html').send(PAGINA);

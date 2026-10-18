@@ -1,7 +1,7 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.11';
+const VERSION_PAGINA = '2026-10-17.12';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
 const FIRMWARE_ESPERADO = '2026-10-17.9';
 // Zona sugerida para la caja de MDF (en % de la imagen)
