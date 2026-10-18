@@ -1963,6 +1963,61 @@ li[data-tipo='captura'] .historial-que strong::before {
   text-align: left;
 }
 
+/* Calibrar: luz de la foto para la IA */
+.opciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.opciones button {
+  min-height: 2.5rem;
+  padding: 0.375rem 0.875rem;
+  border: 2px solid var(--linea);
+  border-radius: 999px;
+  background: var(--superficie);
+  color: var(--tinta);
+  font-size: 0.9375rem;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.opciones button:hover:not(:disabled) {
+  border-color: var(--tinta-2);
+}
+
+.opciones button[aria-checked='true'] {
+  border-color: var(--tinta);
+  background: var(--tinta);
+  color: #fff;
+}
+
+.opciones button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.opciones-nota {
+  color: var(--tinta-2);
+  font-size: 0.875rem;
+}
+
+.foto-prueba {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.625rem;
+  border-radius: 10px;
+  background: var(--superficie-2);
+  font-size: 0.875rem;
+}
+
+.foto-prueba .miniatura {
+  width: 100%;
+}
+
 /* Historial: revisar si acertó */
 .historial-cabeza {
   display: flex;
@@ -2149,6 +2204,10 @@ li[data-tipo='vacio'] .historial-que strong {
     grid-template-columns: 5.5rem minmax(0, 1fr);
   }
 
+  .foto-prueba {
+    grid-template-columns: 1fr;
+  }
+
   .historial-cabeza .boton {
     width: 100%;
   }
@@ -2169,4 +2228,10 @@ li[data-tipo='vacio'] .historial-que strong {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
+
+/* La foto de referencia se tomó con otra luz: resalta el aviso */
+.paso[data-luz='otra'] .cal-resultado {
+  background: var(--amarillo-suave);
+  box-shadow: inset 0 0 0 2px var(--tinta);
 }

@@ -5,6 +5,7 @@
 //     binario 'B' + JPEG  -> foto para clasificar (la disparó el botón "Clasificar ahora")
 //     binario 'D' + ...   -> calibración: bandeja vacía guardada, lo que ve ahora y qué cambió (miniaturas)
 //     binario 'R' + JPEG  -> foto con flash de la bandeja vacía (al calibrar): la IA la usa de referencia
+//     binario 'P' + JPEG  -> "Probar foto": la misma foto que iría a la IA, para ver cómo sale con el flash elegido
 //     texto JSON          -> estado, movimientos, avisos, números de la calibración, medidas de la
 //                            calibración con la caneca vacía y si el residuo cayó después de inclinar
 // - La cámara y el ultrasónico solo avisan que llegó algo. La que decide es la IA: aprovechables,
@@ -16,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-17.9';
+const VERSION = '2026-10-17.10';
 
 const fs = require('fs');
 const os = require('os');
@@ -84,6 +85,7 @@ const ORDENES = new Set([
   'flash', 'clasificar', 'pausa', 'reanudar',
   'referencia', // (programas viejos) guardar ya la foto y la distancia de la bandeja vacía
   'calibrar', // calibrar con la bandeja vacía: foto de referencia, foto con flash para la IA y medidas del ultrasónico
+  'foto_prueba', // la foto que iría a la IA, sin preguntarle nada (para elegir el flash)
 ]);
 const MOVIMIENTOS = [...LADOS, 'vaciar_aprovechables', 'vaciar_no_aprovechables', 'vaciar'];
 // Clases que NO son un residuo: la bandeja no se mueve
@@ -102,6 +104,8 @@ function construirPrompt(conReferencia) {
     `2. Si sobre la bandeja no hay ningún objeto (solo la bandeja con sus manchas, sombras, reflejos o marcas${conReferencia ? ', lo mismo que en la referencia' : ''}), responde vacio.`,
     '3. Si hay un objeto, responde su código:',
     ...CLASES_RESIDUO.map((c) => `${c.id}: ${c.ejemplos}`),
+    'Para no confundirlos: el papel es opaco, se arruga en pliegues angulosos y tiene bordes rasgados o rectos; aunque el flash lo haga ver muy blanco o brillante, sigue siendo papel. ' +
+      'El plástico es liso, brillante con reflejos, transparente o translúcido, o tiene forma de envase. Una servilleta, pañuelo o papel higiénico es blando y delgado (sanitario).',
     'Si un empaque de papel, cartón o plástico está sucio con comida o grasa, responde contaminado. Si hay un objeto pero no sabes qué es, responde otro.',
     'Responde solo con el código, en minúsculas y sin tildes, sin explicar nada.',
   ].join('\n');
@@ -138,6 +142,7 @@ if (DIR_DATOS !== DIR_DATOS_PROGRAMA && !fs.existsSync(path.join(DIR_DATOS, 'est
 const ARCHIVO_DATOS = path.join(DIR_DATOS, 'estado.json');
 const ARCHIVO_ULTIMA = path.join(DIR_DATOS, 'ultima.jpg');
 const ARCHIVO_REFERENCIA = path.join(DIR_DATOS, 'referencia.jpg'); // bandeja vacía con flash, para la IA
+const ARCHIVO_PRUEBA = path.join(DIR_DATOS, 'prueba.jpg'); // la última "Probar foto"
 const DIR_FOTOS = path.join(DIR_DATOS, 'fotos'); // foto de cada clasificación (las últimas MAX_FOTOS)
 const DIR_CAPTURAS = path.join(DIR_DATOS, 'capturas'); // capturas de depuración guardadas desde el monitor
 const MAX_EVENTOS = 200;
@@ -159,6 +164,15 @@ function umbralValido(valor) {
   const n = Math.round(Number(valor));
   return Number.isFinite(n) ? Math.min(30, Math.max(1, n)) : null;
 }
+// Flash en la foto para la IA, en % (0 = sin flash). A 100 % el papel cerca del LED salía blanco y brillante
+// y la IA lo confundía con plástico (17 oct)
+const FLASH_FOTO_FABRICA = 30;
+function flashValido(valor) {
+  const n = Math.round(Number(valor));
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : null;
+}
+// Detalle de la foto para la IA: bajo = más rápido y barato; alto = ve mejor texturas (papel o plástico)
+const detalleValido = (v) => (v === 'bajo' || v === 'alto' ? v : null);
 // Ultrasónico: cuántos cm más cerca que la bandeja vacía cuenta como residuo (0,5 a 10)
 const ULTRA_UMBRAL_FABRICA = 1.5;
 function ultraUmbralValido(valor) {
@@ -181,6 +195,8 @@ let datos = {
   umbralCamara: UMBRAL_CAMARA_FABRICA,
   zona: { ...ZONA_FABRICA },
   ultraUmbral: ULTRA_UMBRAL_FABRICA,
+  flashFoto: FLASH_FOTO_FABRICA,
+  detalleIA: CONFIG.resolucionBaja ? 'bajo' : 'alto',
   revisiones: {}, // lo que marcó la persona en el historial: { id: { dijo, lado, real, ladoReal, ok, fecha } }
   caidas: { si: 0, no: 0 }, // después de inclinar por una clasificación, ¿el residuo cayó?
   noDetecto: 0, // veces que alguien avisó que puso algo y no lo detectó
@@ -196,6 +212,8 @@ try {
     umbralCamara: umbralValido(guardado.umbralCamara) ?? UMBRAL_CAMARA_FABRICA,
     zona: zonaValida(guardado.zona) ?? { ...ZONA_FABRICA },
     ultraUmbral: ultraUmbralValido(guardado.ultraUmbral) ?? ULTRA_UMBRAL_FABRICA,
+    flashFoto: flashValido(guardado.flashFoto) ?? FLASH_FOTO_FABRICA,
+    detalleIA: detalleValido(guardado.detalleIA) ?? (CONFIG.resolucionBaja ? 'bajo' : 'alto'),
     revisiones: guardado.revisiones && typeof guardado.revisiones === 'object' ? guardado.revisiones : {},
     caidas: { si: Number(guardado.caidas?.si) || 0, no: Number(guardado.caidas?.no) || 0 },
     noDetecto: Number(guardado.noDetecto) || 0,
@@ -285,6 +303,7 @@ let ultimoVideo = null; // última imagen en vivo (JPEG), para las capturas
 let ultimaDepuracion = null; // { cuadro: Buffer 'D', numeros: {...}, fecha }
 let numerosDepuracion = null;
 let depuracionPedida = false;
+let fechaPrueba = null; // cuándo se tomó la última "Probar foto"
 let fotoReferencia = null; // JPEG de la bandeja vacía con flash (para la IA)
 let fechaReferencia = null;
 try {
@@ -353,6 +372,9 @@ function resumen() {
     umbralCamara: datos.umbralCamara,
     zona: datos.zona,
     ultraUmbral: datos.ultraUmbral,
+    flashFoto: datos.flashFoto,
+    detalleIA: datos.detalleIA,
+    fotoPrueba: fechaPrueba,
     calibracion: datos.calibracion,
     referencia: fechaReferencia,
     lados: LADO_CANECA,
@@ -385,7 +407,7 @@ function actualizarDepuracion(forzar) {
   }
 }
 function ajustesEsp() {
-  return { t: 'ajustes', umbralCamara: datos.umbralCamara, zona: datos.zona, ultraUmbral: datos.ultraUmbral };
+  return { t: 'ajustes', umbralCamara: datos.umbralCamara, zona: datos.zona, ultraUmbral: datos.ultraUmbral, flashFoto: datos.flashFoto };
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +451,7 @@ async function preguntarIA(jpg) {
   ];
   const generationConfig = {
     // Baja resolución: ~320 tokens por foto en vez de ~1.150; en la prueba fue más rápido y acertó igual
-    ...(CONFIG.resolucionBaja ? { mediaResolution: 'MEDIA_RESOLUTION_LOW' } : {}),
+    ...(datos.detalleIA === 'bajo' ? { mediaResolution: 'MEDIA_RESOLUTION_LOW' } : {}),
     // Pensar lo mínimo: es una sola palabra de respuesta y así contesta mucho más rápido
     ...(pensarMinimo ? { thinkingConfig: { thinkingLevel: 'minimal' } } : {}),
   };
@@ -560,6 +582,14 @@ function manejarBinarioEsp(buf) {
     clasificar(Buffer.from(jpg), tipo === 'C' ? 'auto' : 'boton');
   } else if (tipo === 'R') {
     guardarReferencia(Buffer.from(jpg)); // bandeja vacía con flash, tomada al calibrar
+  } else if (tipo === 'P') {
+    try {
+      fs.writeFileSync(ARCHIVO_PRUEBA, jpg);
+      fechaPrueba = new Date().toISOString();
+      difundir({ t: 'fotoPrueba', fecha: fechaPrueba, flash: datos.flashFoto });
+    } catch (e) {
+      console.error('No se pudo guardar la foto de prueba:', e.message);
+    }
   }
 }
 
@@ -611,6 +641,7 @@ function manejarTextoEsp(texto) {
       validas: num(m.validas),
       medidas: num(m.medidas),
       camara: Boolean(m.camara),
+      flash: Number.isFinite(m.flash) ? m.flash : null, // con qué flash se tomó la foto de referencia
       // sugerido: 5 veces lo que varía, al menos 1 cm (un objeto pequeño acorta unos 2 cm)
       sugerido: desv === null ? null : Math.min(5, Math.max(1, Math.ceil(desv * 5 * 10) / 10)),
     };
@@ -850,15 +881,20 @@ function manejarMonitor(ws, texto) {
     const umbralCamara = umbralValido(m.umbralCamara);
     const zona = zonaValida(m.zona);
     const ultraUmbral = m.ultraUmbral === undefined ? datos.ultraUmbral : ultraUmbralValido(m.ultraUmbral);
+    const flashFoto = m.flashFoto === undefined ? datos.flashFoto : flashValido(m.flashFoto);
+    const detalleIA = m.detalleIA === undefined ? datos.detalleIA : detalleValido(m.detalleIA);
+    if (flashFoto === null || detalleIA === null) return enviar(ws, { t: 'error', msg: 'Revisa el flash (0 a 100 %) y el detalle de la foto.' });
     if (umbralCamara === null) return enviar(ws, { t: 'error', msg: 'El % de la cámara debe ser un número de 1 a 30.' });
     if (zona === null) return enviar(ws, { t: 'error', msg: 'Revisa la zona: de 0 a 100 %, y al menos 10 % entre el inicio y el fin.' });
     if (ultraUmbral === null) return enviar(ws, { t: 'error', msg: 'Los cm del ultrasónico deben ser un número de 0,5 a 10.' });
     datos.umbralCamara = umbralCamara;
     datos.zona = zona;
     datos.ultraUmbral = ultraUmbral;
+    datos.flashFoto = flashFoto;
+    datos.detalleIA = detalleIA;
     guardar();
     enviarEsp(ajustesEsp());
-    difundir({ t: 'ajustes', umbralCamara, zona, ultraUmbral });
+    difundir({ t: 'ajustes', umbralCamara, zona, ultraUmbral, flashFoto, detalleIA });
     enviar(ws, { t: 'ok', msg: 'Ajustes guardados en la caneca.' });
   }
 }
@@ -908,6 +944,7 @@ function enviarJpg(res, archivo) {
 }
 app.get('/ultima.jpg', (_req, res) => enviarJpg(res, ARCHIVO_ULTIMA));
 app.get('/referencia.jpg', (_req, res) => enviarJpg(res, ARCHIVO_REFERENCIA));
+app.get('/prueba.jpg', (_req, res) => enviarJpg(res, ARCHIVO_PRUEBA));
 app.get('/fotos/:id.jpg', (req, res) => {
   if (!/^\d+$/.test(req.params.id)) return res.status(404).end();
   enviarJpg(res, path.join(DIR_FOTOS, `${req.params.id}.jpg`));

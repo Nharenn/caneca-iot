@@ -198,6 +198,27 @@
         </div>
 
         <ol class="pasos">
+          <li class="paso" id="paso-foto">
+            <h3>Luz de la foto para la IA</h3>
+            <p>Cada vez que llega algo, la caneca toma una foto y se la manda a la IA. Con el flash muy fuerte, un papel cerca de la cámara sale blanco y brillante, y la IA puede confundirlo con plástico. Elige una opción, toca <b>Probar foto</b> y quédate con la que se vea más parecida a la realidad.</p>
+            <div class="opciones" role="radiogroup" aria-label="Flash de la foto para la IA" id="opciones-flash">
+              <button type="button" role="radio" aria-checked="false" data-flash="0">Sin flash</button>
+              <button type="button" role="radio" aria-checked="false" data-flash="30">Suave</button>
+              <button type="button" role="radio" aria-checked="false" data-flash="60">Media</button>
+              <button type="button" role="radio" aria-checked="false" data-flash="100">Fuerte</button>
+            </div>
+            <div class="opciones" role="radiogroup" aria-label="Detalle de la foto para la IA" id="opciones-detalle">
+              <button type="button" role="radio" aria-checked="false" data-detalle="bajo">Detalle normal</button>
+              <button type="button" role="radio" aria-checked="false" data-detalle="alto">Más detalle</button>
+            </div>
+            <p class="opciones-nota" id="detalle-nota">Con más detalle la IA distingue mejor papel de plástico; tarda un poco más y cuesta unos 0,5 pesos por foto en vez de 0,2.</p>
+            <button type="button" class="boton" data-orden="foto_prueba" id="btn-probar-foto">Probar foto</button>
+            <figure class="foto-prueba" id="foto-prueba" hidden>
+              <button type="button" class="miniatura" id="foto-prueba-ver" aria-label="Ver la foto de prueba en grande"><img id="foto-prueba-img" alt=""></button>
+              <figcaption id="foto-prueba-texto"></figcaption>
+            </figure>
+          </li>
+
           <li class="paso" id="paso-ref">
             <h3>Calibrar con la bandeja vacía</h3>
             <p>Deja la bandeja vacía, a nivel y sin manos, y toca el botón. La caneca mide la distancia del ultrasónico 20 veces, guarda la imagen de la bandeja vacía y le manda a la IA una foto con flash para que compare. Repítelo si cambia la luz, mueves la caneca o cambias un sensor.</p>

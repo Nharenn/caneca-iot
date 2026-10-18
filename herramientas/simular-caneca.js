@@ -13,7 +13,7 @@ const path = require('path');
 require('dotenv').config({ quiet: true, path: path.join(__dirname, '..', '.env') });
 const WebSocket = require('ws');
 
-const VERSION = '2026-10-17.7'; // la del programa de la placa
+const VERSION = '2026-10-17.8'; // la del programa de la placa
 const base = (process.argv[2] || `ws://localhost:${process.env.PORT || process.env.PUERTO || 3000}`).replace(/\/$/, '');
 const token = encodeURIComponent(process.env.TOKEN_DISPOSITIVO || '');
 const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));
@@ -21,7 +21,7 @@ const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));
 // aprovechables = lado del 180 (150°), no aprovechables = lado del 0 (30°)
 const placa = {
   stream: false, depurar: false, servo: 90, pausa: false, flash: false, ultra: false, vaciar: null,
-  umbralCamara: 3, zona: { x0: 18, x1: 78, y0: 4, y1: 62 }, refDesde: Date.now(), ultraUmbral: 1.5, mano: false,
+  umbralCamara: 3, zona: { x0: 18, x1: 78, y0: 4, y1: 62 }, refDesde: Date.now(), ultraUmbral: 1.5, mano: false, flashFoto: 30,
 };
 const ws = new WebSocket(`${base}/ws/esp?token=${token}`);
 
@@ -140,6 +140,7 @@ ws.on('message', (data, esBinario) => {
     placa.umbralCamara = m.umbralCamara;
     placa.zona = m.zona;
     if (Number.isFinite(m.ultraUmbral)) placa.ultraUmbral = m.ultraUmbral;
+    if (Number.isFinite(m.flashFoto)) placa.flashFoto = m.flashFoto;
     console.log(`Ajustes: cámara desde ${m.umbralCamara} %, ultrasónico desde ${placa.ultraUmbral} cm, zona ${JSON.stringify(m.zona)}`);
   } else if (m.t === 'orden') {
     console.log(`Orden del monitor: ${m.a}`);
@@ -156,11 +157,12 @@ ws.on('message', (data, esBinario) => {
       placa.refDesde = Date.now();
       placa.ultra = false;
       setTimeout(() => {
-        ws.send(JSON.stringify({ t: 'calibracion', vacia: 23.7, desv: 0.04, validas: 20, medidas: 20, camara: true, foto: true }));
+        ws.send(JSON.stringify({ t: 'calibracion', vacia: 23.7, desv: 0.04, validas: 20, medidas: 20, camara: true, foto: true, flash: placa.flashFoto }));
         mandarFoto('R');
       }, 1600);
     }
     else if (m.a === 'clasificar') mandarFoto('B');
+    else if (m.a === 'foto_prueba') setTimeout(() => mandarFoto('P'), 400);
     mandarEstado();
   }
 });

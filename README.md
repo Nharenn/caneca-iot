@@ -12,6 +12,7 @@ bandeja vacía que se toma al calibrar, y piensa lo mínimo (`thinkingLevel: min
 - **Control:** todos miran; con el PIN maneja **una sola persona**. Si otra pone el PIN queda en fila y el control
   le pasa cuando la primera toca "Terminar", cierra la página o lleva 3 minutos sin tocar nada mientras alguien espera.
   Cuando un botón está bloqueado, la página dice por qué.
+- **Luz de la foto para la IA** (en Calibrar): sin flash, suave, media o fuerte, y detalle normal o más detalle, con **Probar foto** para ver cómo sale. Con el flash fuerte, un papel cerca del LED salía blanco y brillante y la IA decía plástico.
 - **Calibrar:** la imagen en color con el cuadro amarillo (la zona que se revisa, se arrastra), **Calibrar con la
   bandeja vacía** (20 medidas del ultrasónico, imagen de la cámara y foto con flash para la IA), y cuándo avisan la
   cámara (%) y el ultrasónico (cm). Todo se ve al instante y la caneca lo usa al tocar **Guardar en la caneca**.
@@ -88,4 +89,4 @@ El CDN de Hostinger guarda `app.js` y `estilos.css`; por eso el servidor arma la
 Los datos (conteos, historial, revisiones, fotos y capturas) se guardan, en el hosting, en `~/caneca-datos` (fuera de
 la carpeta del programa, para que no se borren al volver a desplegar; `/api/salud` dice `"fueraDelPrograma": true`).
 En el Mac quedan en `datos/`. La variable `DIR_DATOS` cambia la carpeta.
-La página y el servidor llevan la misma versión (`2026-10-17.9`). El programa de la placa va por su cuenta (`2026-10-17.7`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
+La página y el servidor llevan la misma versión (`2026-10-17.10`). El programa de la placa va por su cuenta (`2026-10-17.8`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.

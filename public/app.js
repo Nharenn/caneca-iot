@@ -1,9 +1,9 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.9';
+const VERSION_PAGINA = '2026-10-17.10';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
-const FIRMWARE_ESPERADO = '2026-10-17.7';
+const FIRMWARE_ESPERADO = '2026-10-17.8';
 // Zona sugerida para la caja de MDF (en % de la imagen)
 const ZONA_SUGERIDA = { x0: 22, x1: 74, y0: 7, y1: 60 };
 
@@ -39,6 +39,9 @@ const app = {
   umbralCamara: null,
   zona: null,
   ultraUmbral: null,
+  flashFoto: null, // % del flash en la foto para la IA (0 = sin flash)
+  detalleIA: null, // 'bajo' o 'alto'
+  fotoPrueba: null, // fecha de la última "Probar foto"
   calibracion: null, // la última calibración con la bandeja vacía
   referencia: null, // fecha de la foto de la bandeja vacía que usa la IA
   // Quién maneja: 'mirando' (solo ver), 'espera' (en la fila, con PIN) o 'tuyo' (tienes el control)
@@ -130,6 +133,9 @@ function manejar(m) {
       }
       app.calibracion = m.calibracion || null;
       app.referencia = m.referencia || null;
+      app.flashFoto = m.flashFoto ?? app.flashFoto;
+      app.detalleIA = m.detalleIA ?? app.detalleIA;
+      app.fotoPrueba = m.fotoPrueba || app.fotoPrueba;
       recibirAjustes(m.umbralCamara ?? app.umbralCamara, m.zona || app.zona, m.ultraUmbral ?? app.ultraUmbral);
       pintarTodo();
       break;
@@ -152,6 +158,8 @@ function manejar(m) {
       pintarUltima();
       break;
     case 'ajustes':
+      app.flashFoto = m.flashFoto ?? app.flashFoto;
+      app.detalleIA = m.detalleIA ?? app.detalleIA;
       recibirAjustes(m.umbralCamara, m.zona, m.ultraUmbral ?? app.ultraUmbral);
       cal.historia = []; // los % cambian con la zona nueva
       pintarEstado();
@@ -180,6 +188,11 @@ function manejar(m) {
     case 'referencia':
       app.referencia = m.fecha;
       pintarCal();
+      break;
+    case 'fotoPrueba':
+      app.fotoPrueba = m.fecha;
+      dep.probando = 0;
+      pintarFotoIA();
       break;
     case 'eventoActualizado': {
       // una clasificación que revisaron, o que ya se sabe si cayó
@@ -402,6 +415,7 @@ function pintarConexion() {
     ? motivoHistorial.replace('para usar los botones', 'para marcar si la caneca acertó').replace('los botones', 'los botones para marcar')
     : '';
   pintarGuardar();
+  pintarFotoIA();
   if (app.eventos.length) pintarHistorial(); // los botones de revisar dependen del control
 }
 
@@ -1005,6 +1019,7 @@ const dep = {
   capas: null, // las tres imágenes ya pintadas (80 x 60)
   vista: 'color', // la imagen en color de la cámara, con el cuadro amarillo
   calibrando: 0, // cuándo se tocó "Calibrar con la bandeja vacía" (0 = no está calibrando)
+  probando: 0, // cuándo se tocó "Probar foto"
   foto: null, // foto en color de una captura
   ultimoCuadro: 0,
   pedidoDesde: 0,
@@ -1461,6 +1476,45 @@ function pintarUltraCal() {
   $('#ul-veredicto').textContent = v;
 }
 
+// Luz de la foto para la IA: se aplica al tocarla (con el control), para poder probarla enseguida
+const NOMBRES_FLASH = { 0: 'Sin flash', 30: 'Flash suave', 60: 'Flash medio', 100: 'Flash fuerte' };
+const nombreFlash = (pct) => NOMBRES_FLASH[pct] || `Flash al ${pct} %`;
+function pintarFotoIA() {
+  const puede = manejo() && app.servidor;
+  for (const b of $$('#opciones-flash button')) {
+    b.setAttribute('aria-checked', String(Number(b.dataset.flash) === app.flashFoto));
+    b.disabled = !puede;
+  }
+  for (const b of $$('#opciones-detalle button')) {
+    b.setAttribute('aria-checked', String(b.dataset.detalle === app.detalleIA));
+    b.disabled = !puede;
+  }
+  const probar = $('#btn-probar-foto');
+  probar.textContent = dep.probando ? 'Tomando la foto…' : 'Probar foto';
+  probar.disabled = Boolean(dep.probando) || !app.online || !manejo();
+  if (dep.probando && Date.now() - dep.probando > 10000) dep.probando = 0;
+  const fig = $('#foto-prueba');
+  fig.hidden = !app.fotoPrueba;
+  if (app.fotoPrueba) {
+    const src = `/prueba.jpg?v=${encodeURIComponent(app.fotoPrueba)}`;
+    if ($('#foto-prueba-img').getAttribute('src') !== src) $('#foto-prueba-img').src = src;
+    const texto = `Foto de prueba (${hora(app.fotoPrueba)}): así la recibe la IA. Si el papel se ve blanco y brillante, baja el flash; si se ve muy oscura, súbelo.`;
+    $('#foto-prueba-texto').textContent = texto;
+    $('#foto-prueba-ver').onclick = () => abrirVisor(src, texto);
+  }
+  const paso = $('#paso-foto');
+  paso.dataset.ok = app.flashFoto === null ? '' : 'si';
+}
+
+function aplicarFotoIA(cambio) {
+  if (!manejo()) return irAlPin();
+  if (app.umbralCamara === null || !app.zona) return;
+  // se mandan los ajustes guardados (no el borrador) con el cambio de la foto
+  mandar({ t: 'ajustes', umbralCamara: app.umbralCamara, zona: { ...app.zona }, ultraUmbral: app.ultraUmbral ?? undefined, flashFoto: app.flashFoto, detalleIA: app.detalleIA, ...cambio });
+}
+for (const b of $$('#opciones-flash button')) b.addEventListener('click', () => aplicarFotoIA({ flashFoto: Number(b.dataset.flash) }));
+for (const b of $$('#opciones-detalle button')) b.addEventListener('click', () => aplicarFotoIA({ detalleIA: b.dataset.detalle }));
+
 // Resultado de "Calibrar con la bandeja vacía" y la foto que usa la IA
 function pintarCalibracion() {
   const btn = $('#btn-calibrar');
@@ -1500,9 +1554,16 @@ function pintarCalibracion() {
   }
   partes.push(app.referencia ? 'La foto es la bandeja vacía que la IA usa para comparar (tócala para verla).' : 'La IA todavía no tiene foto de la bandeja vacía.');
   $('#cal-resultado-texto').textContent = partes.join(' ');
+  // si después de calibrar se cambió el flash, la foto de referencia quedó con otra luz
+  const otraLuz = c && Number.isFinite(c.flash) && app.flashFoto !== null && c.flash !== app.flashFoto;
+  $('#paso-ref').dataset.luz = otraLuz ? 'otra' : '';
+  if (otraLuz) {
+    $('#cal-resultado-texto').textContent += ` La foto de referencia se tomó con ${nombreFlash(c.flash).toLowerCase()} y ahora la foto usa ${nombreFlash(app.flashFoto).toLowerCase()}: calibra otra vez con la bandeja vacía para que la IA compare con la misma luz.`;
+  }
 }
 
 function pintarCal() {
+  pintarFotoIA();
   pintarDeslizadores();
   pintarSensibilidad();
   pintarUltraCal();
@@ -1770,6 +1831,10 @@ document.addEventListener('click', (evento) => {
   if (!boton || boton.disabled) return;
   let accion = boton.dataset.orden;
   if (accion === 'pausa' && app.estado?.pausa) accion = 'reanudar';
+  if (accion === 'foto_prueba') {
+    dep.probando = Date.now();
+    pintarFotoIA();
+  }
   if (accion === 'calibrar') {
     cal.historia = [];
     // los programas viejos de la placa no conocen "calibrar": guardan la bandeja vacía con "referencia"
