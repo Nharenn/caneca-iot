@@ -1,7 +1,7 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.13';
+const VERSION_PAGINA = '2026-10-18.1';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
 const FIRMWARE_ESPERADO = '2026-10-17.9';
 // Zona sugerida para la caja de MDF (en % de la imagen)
@@ -581,9 +581,14 @@ function pintarEstado() {
     enlace.target = '_blank';
     enlace.rel = 'noopener';
     enlace.textContent = `http://${e.ip}`;
-    pagina.append(enlace, ' desde tu misma red Wi-Fi, o http://192.168.4.1 conectado a la red Caneca-IoT.');
+    pagina.append(enlace, ' desde tu misma red Wi-Fi.');
+  }
+  // Desde el programa 2026-10-18.1 la red Caneca-IoT se apaga sola cuando la caneca tiene el Wi-Fi del lugar:
+  // si seguía prendida, un celular que la tenía guardada se quedaba en ella, sin internet, y el monitor no abría
+  if (e.redPropia === false) {
+    pagina.append(' Su red Caneca-IoT está apagada para que los celulares no se queden sin internet: aparece si la caneca pierde el Wi-Fi y en los 3 minutos después de encenderla.');
   } else {
-    pagina.append('http://192.168.4.1 conectado a la red Caneca-IoT.');
+    pagina.append(e.ip ? ' También en http://192.168.4.1 conectado a la red Caneca-IoT.' : 'http://192.168.4.1 conectado a la red Caneca-IoT.');
   }
 
   if (panelActual === 'calibrar') pintarUltraCal();

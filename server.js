@@ -17,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-17.13';
+const VERSION = '2026-10-18.1';
 
 const fs = require('fs');
 const os = require('os');
@@ -626,6 +626,7 @@ function manejarTextoEsp(texto) {
       rssi: m.rssi ?? null,
       ip: typeof m.ip === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(m.ip) && m.ip !== '0.0.0.0' ? m.ip : null,
       fw: typeof m.fw === 'string' ? m.fw.slice(0, 20) : null,
+      redPropia: typeof m.redPropia === 'boolean' ? m.redPropia : null, // la red Caneca-IoT (programa 2026-10-18.1)
       modo: m.modo || 'online',
     };
     difundir({ t: 'estado', estado: estadoEsp });
