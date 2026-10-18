@@ -1,14 +1,14 @@
 // Monitor online de la caneca clasificadora
 // - La ESP32-CAM se conecta por WebSocket a /ws/esp (con token) y manda:
 //     binario 'V' + JPEG  -> imagen en vivo (solo mientras alguien mira el monitor)
-//     binario 'C' + JPEG  -> foto para clasificar (la disparó el ultrasónico o la cámara)
+//     binario 'C' + JPEG  -> foto para clasificar (la disparó la cámara)
 //     binario 'B' + JPEG  -> foto para clasificar (la disparó el botón "Clasificar ahora")
 //     binario 'D' + ...   -> calibración: bandeja vacía guardada, lo que ve ahora y qué cambió (miniaturas)
 //     binario 'R' + JPEG  -> foto con flash de la bandeja vacía (al calibrar): la IA la usa de referencia
 //     binario 'P' + JPEG  -> "Probar foto": la misma foto que iría a la IA, para ver cómo sale con el flash elegido
-//     texto JSON          -> estado, movimientos, avisos, números de la calibración, medidas de la
-//                            calibración con la caneca vacía y si el residuo cayó después de inclinar
-// - La cámara y el ultrasónico solo avisan que llegó algo. La que decide es la IA: aprovechables,
+//     texto JSON          -> estado, movimientos, avisos, números de la calibración, la calibración con
+//                            la caneca vacía y si el residuo cayó después de inclinar
+// - La cámara solo avisa que llegó algo (desde el 18 oct no hay ultrasónico). La que decide es la IA: aprovechables,
 //   no aprovechables, o nada (una mano o la bandeja vacía: la bandeja no se mueve).
 // - Los navegadores se conectan a /ws/monitor: reciben imagen y estado. Solo UNA persona maneja la
 //   caneca a la vez: la primera que pone el PIN. Las demás miran; si ponen el PIN quedan en fila
@@ -17,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-18.2';
+const VERSION = '2026-10-18.3';
 
 const fs = require('fs');
 const os = require('os');
@@ -84,7 +84,7 @@ const ORDENES = new Set([
   'vaciar_aprovechables', 'vaciar_no_aprovechables', // bandeja de canto hacia ese lado, para sacar esa bolsa
   'flash', 'clasificar', 'pausa', 'reanudar',
   'referencia', // (programas viejos) guardar ya la foto y la distancia de la bandeja vacía
-  'calibrar', // calibrar con la bandeja vacía: foto de referencia, foto con flash para la IA y medidas del ultrasónico
+  'calibrar', // calibrar con la bandeja vacía: foto de referencia de la cámara y foto con flash para la IA
   'foto_prueba', // la foto que iría a la IA, sin preguntarle nada (para elegir el flash)
 ]);
 const MOVIMIENTOS = [...LADOS, 'vaciar_aprovechables', 'vaciar_no_aprovechables', 'vaciar'];
@@ -173,12 +173,6 @@ function flashValido(valor) {
 }
 // Detalle de la foto para la IA: bajo = más rápido y barato; alto = ve mejor texturas (papel o plástico)
 const detalleValido = (v) => (v === 'bajo' || v === 'alto' ? v : null);
-// Ultrasónico: cuántos cm más cerca que la bandeja vacía cuenta como residuo (0,5 a 10)
-const ULTRA_UMBRAL_FABRICA = 1.5;
-function ultraUmbralValido(valor) {
-  const n = Math.round(Number(valor) * 10) / 10;
-  return Number.isFinite(n) ? Math.min(10, Math.max(0.5, n)) : null;
-}
 function zonaValida(z) {
   if (!z || typeof z !== 'object') return null;
   const v = ['x0', 'x1', 'y0', 'y1'].map((k) => Math.round(Number(z[k])));
@@ -194,7 +188,6 @@ let datos = {
   registro: [], // cada clasificación: [fecha en ms, clase, ms de la IA], para las estadísticas
   umbralCamara: UMBRAL_CAMARA_FABRICA,
   zona: { ...ZONA_FABRICA },
-  ultraUmbral: ULTRA_UMBRAL_FABRICA,
   flashFoto: FLASH_FOTO_FABRICA,
   detalleIA: CONFIG.resolucionBaja ? 'bajo' : 'alto',
   revisiones: {}, // lo que marcó la persona en el historial: { id: { dijo, lado, real, ladoReal, ok, fecha } }
@@ -211,13 +204,12 @@ try {
     registro: Array.isArray(guardado.registro) ? guardado.registro : [],
     umbralCamara: umbralValido(guardado.umbralCamara) ?? UMBRAL_CAMARA_FABRICA,
     zona: zonaValida(guardado.zona) ?? { ...ZONA_FABRICA },
-    ultraUmbral: ultraUmbralValido(guardado.ultraUmbral) ?? ULTRA_UMBRAL_FABRICA,
     flashFoto: flashValido(guardado.flashFoto) ?? FLASH_FOTO_FABRICA,
     detalleIA: detalleValido(guardado.detalleIA) ?? (CONFIG.resolucionBaja ? 'bajo' : 'alto'),
     revisiones: guardado.revisiones && typeof guardado.revisiones === 'object' ? guardado.revisiones : {},
     caidas: { si: Number(guardado.caidas?.si) || 0, no: Number(guardado.caidas?.no) || 0 },
     noDetecto: Number(guardado.noDetecto) || 0,
-    calibracion: guardado.calibracion || null,
+    calibracion: guardado.calibracion ? { fecha: guardado.calibracion.fecha, camara: Boolean(guardado.calibracion.camara), flash: guardado.calibracion.flash ?? null } : null,
   };
 } catch {
   /* primera vez: no hay archivo */
@@ -271,7 +263,7 @@ const TIPOS_CAPTURA = {
 let capturas = []; // resumen de cada una (lo pesado queda en su archivo)
 function resumenCaptura(c) {
   const d = c.datos || {};
-  return { id: c.id, fecha: c.fecha, tipo: c.tipo, nota: c.nota || '', foto: Boolean(c.foto), camPct: d.camPct ?? null, dist: d.dist ?? null, vacia: d.vacia ?? null };
+  return { id: c.id, fecha: c.fecha, tipo: c.tipo, nota: c.nota || '', foto: Boolean(c.foto), camPct: d.camPct ?? null };
 }
 try {
   capturas = fs
@@ -295,7 +287,7 @@ try {
 // ---------------------------------------------------------------------------
 let esp = null; // conexión de la ESP32-CAM
 let estadoEsp = {
-  ultra: false, dist: null, vacia: null, ultraUmbral: null, cam: false, camPct: null, atascado: false, esperando: false, mano: false,
+  cam: false, camPct: null, atascado: false, esperando: false, mano: false,
   pausa: false, vaciar: false, vaciarLado: null, flash: false, servo: 90, rssi: null, ip: null, fw: null, modo: 'online',
 };
 const monitores = new Set();
@@ -371,7 +363,6 @@ function resumen() {
     eventos: datos.eventos.slice(0, 30),
     umbralCamara: datos.umbralCamara,
     zona: datos.zona,
-    ultraUmbral: datos.ultraUmbral,
     flashFoto: datos.flashFoto,
     detalleIA: datos.detalleIA,
     fotoPrueba: fechaPrueba,
@@ -407,7 +398,7 @@ function actualizarDepuracion(forzar) {
   }
 }
 function ajustesEsp() {
-  return { t: 'ajustes', umbralCamara: datos.umbralCamara, zona: datos.zona, ultraUmbral: datos.ultraUmbral, flashFoto: datos.flashFoto };
+  return { t: 'ajustes', umbralCamara: datos.umbralCamara, zona: datos.zona, flashFoto: datos.flashFoto };
 }
 
 // ---------------------------------------------------------------------------
@@ -609,10 +600,6 @@ function manejarTextoEsp(texto) {
   }
   if (m.t === 'estado') {
     estadoEsp = {
-      ultra: Boolean(m.ultra),
-      dist: num(m.dist),
-      vacia: num(m.vacia),
-      ultraUmbral: num(m.ultraUmbral),
       cam: Boolean(m.cam),
       camPct: Number.isFinite(m.camPct) && m.camPct >= 0 ? m.camPct : null,
       atascado: Boolean(m.atascado),
@@ -632,18 +619,11 @@ function manejarTextoEsp(texto) {
   } else if (m.t === 'movimiento') {
     if (MOVIMIENTOS.includes(m.lado)) registrarEvento({ tipo: 'movimiento', lado: m.lado, origen: 'monitor' });
   } else if (m.t === 'calibracion') {
-    // calibración con la bandeja vacía: distancia de la bandeja y cuánto varía el ultrasónico
-    const desv = num(m.desv);
+    // calibración con la bandeja vacía: la cámara guardó la bandeja vacía y la foto de referencia para la IA
     datos.calibracion = {
       fecha: new Date().toISOString(),
-      vacia: num(m.vacia),
-      desv,
-      validas: num(m.validas),
-      medidas: num(m.medidas),
       camara: Boolean(m.camara),
       flash: Number.isFinite(m.flash) ? m.flash : null, // con qué flash se tomó la foto de referencia
-      // sugerido: 5 veces lo que varía, al menos 1 cm (un objeto pequeño acorta unos 2 cm)
-      sugerido: desv === null ? null : Math.min(5, Math.max(1, Math.ceil(desv * 5 * 10) / 10)),
     };
     guardar();
     difundir({ t: 'calibracion', calibracion: datos.calibracion });
@@ -660,13 +640,8 @@ function manejarTextoEsp(texto) {
       const verif = {
         residuo: num(m.camResiduo), // % de donde estaba el residuo que seguía distinto
         zona: num(m.camZona), // % de toda la zona distinto a la bandeja vacía
-        cm: num(m.cm),
-        alto: num(m.alto), // cuánto acortaba el residuo al ultrasónico antes de inclinar
-        vacia: num(m.vacia),
-        porCamara: m.porCamara === true,
-        porUltra: m.porUltra === true,
       };
-      if (verif.residuo !== null || verif.zona !== null || verif.cm !== null) ev.verif = verif;
+      if (verif.residuo !== null || verif.zona !== null) ev.verif = verif;
       datos.caidas[ev.cayo ? 'si' : 'no']++;
       actualizarEvento(ev);
     }
@@ -794,7 +769,7 @@ function guardarCaptura(ws, m) {
     fecha: new Date().toISOString(),
     tipo,
     nota: String(m.nota || '').slice(0, 200),
-    datos: conCuadro ? ultimaDepuracion.numeros || {} : { camPct: estadoEsp.camPct, dist: estadoEsp.dist, vacia: estadoEsp.vacia },
+    datos: conCuadro ? ultimaDepuracion.numeros || {} : { camPct: estadoEsp.camPct },
     cuadro: conCuadro ? ultimaDepuracion.cuadro.toString('base64') : null,
     foto: Boolean(ultimoVideo),
   };
@@ -888,25 +863,22 @@ function manejarMonitor(ws, texto) {
     difundir({ t: 'resumen', ...resumen() });
     enviar(ws, { t: 'ok', msg: 'Estadísticas reiniciadas.' });
   } else if (m.t === 'ajustes') {
-    // cuándo avisan la cámara y el ultrasónico (los ángulos del servo ya están fijos en la placa)
+    // cuándo avisa la cámara, la zona y la luz de la foto (los ángulos del servo ya están fijos en la placa)
     if (!tieneControl(ws)) return;
     const umbralCamara = umbralValido(m.umbralCamara);
     const zona = zonaValida(m.zona);
-    const ultraUmbral = m.ultraUmbral === undefined ? datos.ultraUmbral : ultraUmbralValido(m.ultraUmbral);
     const flashFoto = m.flashFoto === undefined ? datos.flashFoto : flashValido(m.flashFoto);
     const detalleIA = m.detalleIA === undefined ? datos.detalleIA : detalleValido(m.detalleIA);
     if (flashFoto === null || detalleIA === null) return enviar(ws, { t: 'error', msg: 'Revisa el flash (0 a 100 %) y el detalle de la foto.' });
     if (umbralCamara === null) return enviar(ws, { t: 'error', msg: 'El % de la cámara debe ser un número de 1 a 30.' });
     if (zona === null) return enviar(ws, { t: 'error', msg: 'Revisa la zona: de 0 a 100 %, y al menos 10 % entre el inicio y el fin.' });
-    if (ultraUmbral === null) return enviar(ws, { t: 'error', msg: 'Los cm del ultrasónico deben ser un número de 0,5 a 10.' });
     datos.umbralCamara = umbralCamara;
     datos.zona = zona;
-    datos.ultraUmbral = ultraUmbral;
     datos.flashFoto = flashFoto;
     datos.detalleIA = detalleIA;
     guardar();
     enviarEsp(ajustesEsp());
-    difundir({ t: 'ajustes', umbralCamara, zona, ultraUmbral, flashFoto, detalleIA });
+    difundir({ t: 'ajustes', umbralCamara, zona, flashFoto, detalleIA });
     enviar(ws, { t: 'ok', msg: 'Ajustes guardados en la caneca.' });
   }
 }

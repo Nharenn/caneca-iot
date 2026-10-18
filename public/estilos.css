@@ -1954,13 +1954,12 @@ li[data-tipo='captura'] .historial-que strong::before {
   cursor: zoom-in;
 }
 
-.cal-resultado img[hidden] + div {
+.cal-resultado img[hidden] + p {
   grid-column: 1 / -1;
 }
 
-.cal-resultado .boton-texto {
-  margin-top: 0.25rem;
-  text-align: left;
+.cal-resultado p {
+  margin: 0;
 }
 
 /* Calibrar: luz de la foto para la IA */

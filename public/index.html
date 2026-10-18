@@ -120,14 +120,6 @@
                 <dt>Detección</dt>
                 <dd><b id="s-detec">Sin datos</b><span id="s-detec-sub">La caneca todavía no ha mandado datos</span></dd>
               </div>
-              <div class="sensor" id="s-ultra" data-ve="no">
-                <dt>Ultrasónico</dt>
-                <dd>
-                  <b id="s-dist">—</b>
-                  <span class="medidor" aria-hidden="true"><span class="medidor-relleno" id="m-ultra"></span><span class="medidor-raya" id="m-ultra-raya"></span></span>
-                  <span id="s-dist-sub">Sin datos</span>
-                </dd>
-              </div>
               <div class="sensor" id="s-cam" data-ve="no">
                 <dt>Cámara</dt>
                 <dd>
@@ -165,7 +157,7 @@
     <section class="panel" id="panel-calibrar" role="tabpanel" aria-labelledby="tab-calibrar" hidden>
       <div class="cal-cabeza">
         <h2>Calibrar</h2>
-        <p class="cal-intro">La cámara y el ultrasónico solo avisan que llegó algo; la que decide es la IA: aprovechables, no aprovechables, o nada si es una mano o la bandeja está vacía. Aquí le dices a la caneca cómo es su bandeja vacía y dónde mirar. Lo que muevas se ve al instante; la caneca lo usa al tocar <b>Guardar en la caneca</b>.</p>
+        <p class="cal-intro">La cámara solo avisa que llegó algo; la que decide es la IA: aprovechables, no aprovechables, o nada si es una mano o la bandeja está vacía. Aquí le dices a la caneca cómo es su bandeja vacía y dónde mirar. Lo que muevas se ve al instante; la caneca lo usa al tocar <b>Guardar en la caneca</b>.</p>
         <p class="nota-alerta" id="cal-aviso-fw" hidden></p>
         <ul class="cal-estado" aria-label="Estado de la calibración">
           <li id="ce-imagen" data-ok="no">Imagen: <b>sin imagen</b></li>
@@ -224,14 +216,11 @@
 
           <li class="paso" id="paso-ref">
             <h3>Calibrar con la bandeja vacía</h3>
-            <p>Deja la bandeja vacía, a nivel y sin manos, y toca el botón. La caneca mide la distancia del ultrasónico 20 veces, guarda la imagen de la bandeja vacía y le manda a la IA una foto con flash para que compare. Repítelo si cambia la luz, mueves la caneca o cambias un sensor.</p>
+            <p>Deja la bandeja vacía, a nivel y sin manos, y toca el botón. La caneca guarda la imagen de la bandeja vacía y le manda a la IA una foto con flash para que compare. Repítelo si cambia la luz o mueves la caneca.</p>
             <button type="button" class="boton boton-principal" data-orden="calibrar" id="btn-calibrar">Calibrar con la bandeja vacía</button>
             <div class="cal-resultado" id="cal-resultado" hidden>
               <img id="cal-ref-img" alt="Foto de la bandeja vacía que usa la IA">
-              <div>
-                <p id="cal-resultado-texto"></p>
-                <button type="button" class="boton-texto" id="btn-usar-sugerido" hidden></button>
-              </div>
+              <p id="cal-resultado-texto"></p>
             </div>
             <p class="paso-estado" id="dep-ref-estado">Sin datos</p>
           </li>
@@ -249,9 +238,8 @@
           </li>
 
           <li class="paso" id="paso-sens">
-            <h3>Cuándo avisan los sensores</h3>
-            <p>La barra es cuánto cambió ahora y la raya negra, desde dónde avisa. Con la bandeja vacía la barra debe quedarse antes de la raya; con un residuo, pasarla. Mejor que avisen de más que de menos: si avisan sin residuo, la IA dice "vacía" y la bandeja no se mueve.</p>
-            <h4>Cámara</h4>
+            <h3>Cuándo avisa la cámara</h3>
+            <p>La barra es cuánto cambió ahora la zona frente a la bandeja vacía y la raya negra, desde dónde avisa. Con la bandeja vacía la barra debe quedarse antes de la raya; con un residuo, pasarla. Mejor que avise de más que de menos: si avisa sin residuo, la IA dice "vacía" y la bandeja no se mueve.</p>
             <div class="regla" id="regla-cam" aria-hidden="true">
               <span class="regla-relleno" id="cal-relleno"></span>
               <span class="regla-max" id="cal-max"></span>
@@ -264,25 +252,12 @@
               <input type="range" id="umbral-cam" min="1" max="30" step="1">
             </label>
             <p class="paso-estado" id="cal-veredicto">Sin datos</p>
-            <h4>Ultrasónico</h4>
-            <div class="regla" id="regla-ultra" aria-hidden="true">
-              <span class="regla-relleno" id="ul-relleno"></span>
-              <span class="regla-raya" id="ul-raya"><span id="ul-raya-texto">1,5 cm</span></span>
-            </div>
-            <p class="regla-escala"><span>0 cm</span><span id="ul-escala">5 cm</span></p>
-            <p class="regla-texto"><b id="ul-ahora">—</b> <span id="ul-texto">Esperando datos del ultrasónico</span></p>
-            <label class="deslizador-sens">
-              <span>Avisa si algo está más cerca que la bandeja vacía en</span><output id="o-ultra" for="umbral-ultra">—</output>
-              <input type="range" id="umbral-ultra" min="0.5" max="5" step="0.1">
-            </label>
-            <p class="paso-estado" id="ul-veredicto">Sin datos</p>
           </li>
 
           <li class="paso" id="paso-res">
             <h3>Qué hace la caneca ahora</h3>
             <dl class="resultado">
               <div id="dep-paso-cam"><dt>Cámara</dt><dd>Sin datos</dd></div>
-              <div id="dep-paso-ultra"><dt>Ultrasónico</dt><dd>Sin datos</dd></div>
               <div id="dep-paso-res"><dt>Entonces</dt><dd>Sin datos</dd></div>
             </dl>
             <details class="tecnico">

@@ -5,7 +5,8 @@
 // cada 15 s, responde a los botones del monitor igual que la placa y, si alguien abre
 // Calibrar, manda miniaturas inventadas (bandeja vacía, ahora y qué cambió). Como la placa 2026-10-17.6:
 // si la IA dice "mano" no se mueve, si dice "vacio" retoma la bandeja vacía, después de inclinar avisa si
-// el residuo cayó, y "Calibrar con la bandeja vacía" manda las medidas y una foto de referencia.
+// el residuo cayó, y "Calibrar con la bandeja vacía" guarda la bandeja vacía y manda una foto de referencia.
+// Como la placa desde la 2026-10-18.4, solo detecta con la cámara (sin ultrasónico).
 'use strict';
 
 const fs = require('fs');
@@ -13,15 +14,15 @@ const path = require('path');
 require('dotenv').config({ quiet: true, path: path.join(__dirname, '..', '.env') });
 const WebSocket = require('ws');
 
-const VERSION = '2026-10-18.3'; // la del programa de la placa
+const VERSION = '2026-10-18.4'; // la del programa de la placa
 const base = (process.argv[2] || `ws://localhost:${process.env.PORT || process.env.PUERTO || 3000}`).replace(/\/$/, '');
 const token = encodeURIComponent(process.env.TOKEN_DISPOSITIVO || '');
 const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));
 
 // aprovechables = lado del 180 (150°), no aprovechables = lado del 0 (30°)
 const placa = {
-  stream: false, depurar: false, servo: 90, pausa: false, flash: false, ultra: false, vaciar: null,
-  umbralCamara: 3, zona: { x0: 18, x1: 78, y0: 4, y1: 62 }, refDesde: Date.now(), ultraUmbral: 1.5, mano: false, flashFoto: 30,
+  stream: false, depurar: false, servo: 90, pausa: false, flash: false, residuo: false, vaciar: null,
+  umbralCamara: 3, zona: { x0: 18, x1: 78, y0: 4, y1: 62 }, refDesde: Date.now(), mano: false, flashFoto: 30,
 };
 const ws = new WebSocket(`${base}/ws/esp?token=${token}`);
 
@@ -33,11 +34,10 @@ function mandarFoto(tipo) {
 }
 
 function mandarEstado() {
-  const { ultra, pausa, flash, servo, vaciar } = placa;
-  const dist = ultra ? 20.1 : 23.7;
-  const camPct = ultra ? 9 : 1; // % de la bandeja distinto a la foto de la bandeja vacía
+  const { residuo, pausa, flash, servo, vaciar } = placa;
+  const camPct = residuo ? 9 : 1; // % de la bandeja distinto a la foto de la bandeja vacía
   ws.send(JSON.stringify({
-    t: 'estado', ultra, dist, vacia: 23.7, ultraUmbral: placa.ultraUmbral, cam: ultra, camPct, atascado: false, esperando: false, mano: placa.mano,
+    t: 'estado', cam: residuo, camPct, atascado: false, esperando: false, mano: placa.mano,
     pausa, flash, servo, vaciar: Boolean(vaciar), vaciarLado: vaciar, rssi: -58, ip: '192.168.1.50', fw: VERSION, modo: 'online',
   }));
 }
@@ -55,7 +55,7 @@ function mandarDepuracion() {
       const i = y * w + x;
       const fondo = 120 + Math.round(40 * (x / w)) + ((x * 7 + y * 13) % 5);
       ref[i] = fondo;
-      const papel = placa.ultra && x > 30 && x < 52 && y > 15 && y < 40;
+      const papel = placa.residuo && x > 30 && x < 52 && y > 15 && y < 40;
       cur[i] = papel ? 225 : fondo + 2;
       const enZona = x >= zx0 && x < zx1 && y >= zy0 && y < zy1;
       if (enZona) {
@@ -72,7 +72,7 @@ function mandarDepuracion() {
   ws.send(JSON.stringify({
     t: 'depuracion', fase: 'comparando', camPct, movPct: 0, umbral: placa.umbralCamara, corrimiento: 2,
     camVe: camPct >= placa.umbralCamara, refLista: true, refEdadS: Math.round((Date.now() - placa.refDesde) / 1000),
-    dist: placa.ultra ? 20.1 : 23.7, vacia: 23.7, ultraUmbral: placa.ultraUmbral, ultraVe: placa.ultra, mano: placa.mano,
+    mano: placa.mano,
     esperando: false, atascado: false, pausa: placa.pausa, vaciar: Boolean(placa.vaciar), servo: placa.servo,
   }));
   ws.send(Buffer.concat([Buffer.from([0x44, w, h, zx0, zx1, zy0, zy1]), ref, cur, marcas]));
@@ -85,16 +85,15 @@ function inclinar(lado, origen) {
   if (lado === 'nivel') return;
   setTimeout(() => {
     placa.servo = 90;
-    placa.ultra = false;
+    placa.residuo = false;
     placa.refDesde = Date.now();
     mandarEstado();
     // como la placa: después de inclinar revisa si el residuo cayó (casi siempre sí)
     const cayo = Math.random() > 0.15;
-    // como la placa: lo que midió al revisar (donde estaba el residuo, toda la zona y el ultrasónico)
+    // como la placa: lo que midió al revisar (donde estaba el residuo y toda la zona)
     ws.send(JSON.stringify({
       t: 'caida', cayo, intentos: cayo ? 1 : 2,
-      camResiduo: cayo ? 4 : 86, camZona: cayo ? 1 : 9, cm: cayo ? 23.7 : 21.9, alto: 1.8, vacia: 23.7,
-      porCamara: !cayo, porUltra: !cayo,
+      camResiduo: cayo ? 4 : 86, camZona: cayo ? 1 : 9,
     }));
   }, 1500);
 }
@@ -110,7 +109,7 @@ ws.on('open', () => {
   }, 1000);
   setInterval(() => {
     if (placa.pausa || placa.vaciar) return;
-    placa.ultra = true;
+    placa.residuo = true;
     mandarEstado();
     setTimeout(() => mandarFoto('C'), 700);
   }, 15000);
@@ -133,20 +132,19 @@ ws.on('message', (data, esBinario) => {
       mandarEstado();
       setTimeout(() => {
         placa.mano = false;
-        placa.ultra = false;
+        placa.residuo = false;
         mandarEstado();
       }, 3000);
     } else if (m.lado === 'nivel') {
-      placa.ultra = false; // vacía: retoma la bandeja vacía
+      placa.residuo = false; // vacía: retoma la bandeja vacía
       placa.refDesde = Date.now();
       mandarEstado();
     } else inclinar(m.lado, null);
   } else if (m.t === 'ajustes') {
     placa.umbralCamara = m.umbralCamara;
     placa.zona = m.zona;
-    if (Number.isFinite(m.ultraUmbral)) placa.ultraUmbral = m.ultraUmbral;
     if (Number.isFinite(m.flashFoto)) placa.flashFoto = m.flashFoto;
-    console.log(`Ajustes: cámara desde ${m.umbralCamara} %, ultrasónico desde ${placa.ultraUmbral} cm, zona ${JSON.stringify(m.zona)}`);
+    console.log(`Ajustes: cámara desde ${m.umbralCamara} %, zona ${JSON.stringify(m.zona)}`);
   } else if (m.t === 'orden') {
     console.log(`Orden del monitor: ${m.a}`);
     if (['aprovechables', 'no_aprovechables', 'nivel', 'clasificar'].includes(m.a)) placa.vaciar = null;
@@ -160,9 +158,9 @@ ws.on('message', (data, esBinario) => {
     else if (m.a === 'reanudar') placa.pausa = false;
     else if (m.a === 'referencia' || m.a === 'calibrar') {
       placa.refDesde = Date.now();
-      placa.ultra = false;
+      placa.residuo = false;
       setTimeout(() => {
-        ws.send(JSON.stringify({ t: 'calibracion', vacia: 23.7, desv: 0.04, validas: 20, medidas: 20, camara: true, foto: true, flash: placa.flashFoto }));
+        ws.send(JSON.stringify({ t: 'calibracion', camara: true, foto: true, flash: placa.flashFoto }));
         mandarFoto('R');
       }, 1600);
     }

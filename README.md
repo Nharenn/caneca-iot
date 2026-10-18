@@ -3,7 +3,7 @@
 Servidor en Node.js de la caneca clasificadora: recibe la cámara de la ESP32-CAM por WebSocket, le pregunta a
 Gemini qué residuo es, le dice a la caneca a qué lado inclinar la bandeja y sirve el monitor en línea.
 
-**Quién decide:** la cámara y el ultrasónico solo avisan que llegó algo. La IA decide: aprovechables, no
+**Quién decide:** la cámara solo avisa que llegó algo (desde el 18 oct no hay ultrasónico). La IA decide: aprovechables, no
 aprovechables, o nada si ve **una mano** o la **bandeja vacía** (la bandeja no se mueve). Compara con una foto de la
 bandeja vacía que se toma al calibrar, y piensa lo mínimo (`thinkingLevel: minimal`) para contestar rápido.
 
@@ -14,8 +14,8 @@ bandeja vacía que se toma al calibrar, y piensa lo mínimo (`thinkingLevel: min
   Cuando un botón está bloqueado, la página dice por qué.
 - **Luz de la foto para la IA** (en Calibrar): sin flash, suave, media o fuerte, y detalle normal o más detalle, con **Probar foto** para ver cómo sale. Con el flash fuerte, un papel cerca del LED salía blanco y brillante y la IA decía plástico.
 - **Calibrar:** la imagen en color con el cuadro amarillo (la zona que se revisa, se arrastra), **Calibrar con la
-  bandeja vacía** (20 medidas del ultrasónico, imagen de la cámara y foto con flash para la IA), y cuándo avisan la
-  cámara (%) y el ultrasónico (cm). Todo se ve al instante y la caneca lo usa al tocar **Guardar en la caneca**.
+  bandeja vacía** (imagen de la cámara y foto con flash para la IA) y desde qué % avisa la cámara. Todo se ve al
+  instante y la caneca lo usa al tocar **Guardar en la caneca**.
 - **Historial:** en cada clasificación, **¿Acertó? Sí / No** (y qué era: aprovechable, no aprovechable, una mano o
   vacía) y "Puse algo y no lo detectó". **Análisis** saca de ahí el % de acierto y de error. La página no muestra si
   el residuo cayó: la placa lo sigue revisando por su cuenta (si parece que quedó, inclina otra vez y espera a que la
@@ -91,4 +91,4 @@ El CDN de Hostinger guarda `app.js` y `estilos.css`; por eso el servidor arma la
 Los datos (conteos, historial, revisiones, fotos y capturas) se guardan, en el hosting, en `~/caneca-datos` (fuera de
 la carpeta del programa, para que no se borren al volver a desplegar; `/api/salud` dice `"fueraDelPrograma": true`).
 En el Mac quedan en `datos/`. La variable `DIR_DATOS` cambia la carpeta.
-La página y el servidor llevan la misma versión (`2026-10-18.2`). El programa de la placa va por su cuenta (`2026-10-18.3`; la página pide al menos la `2026-10-17.9`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
+La página y el servidor llevan la misma versión (`2026-10-18.3`). El programa de la placa va por su cuenta (`2026-10-18.4`; la página pide al menos la `2026-10-17.9`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.

@@ -1,7 +1,7 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-18.2';
+const VERSION_PAGINA = '2026-10-18.3';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
 const FIRMWARE_ESPERADO = '2026-10-17.9';
 // Zona sugerida para la caja de MDF (en % de la imagen)
@@ -19,7 +19,7 @@ const CANECA = {
 // Ángulos fijos de la placa (calibrados en la caja)
 const ANGULO = { aprovechables: 150, no_aprovechables: 30 };
 const NOMBRE_ORIGEN = {
-  auto: 'Automático (ultrasónico o cámara)',
+  auto: 'Automático (cámara)',
   boton: 'Botón Clasificar de la caneca',
   monitor: 'Desde el monitor',
 };
@@ -38,7 +38,6 @@ const app = {
   eventos: [],
   umbralCamara: null,
   zona: null,
-  ultraUmbral: null,
   flashFoto: null, // % del flash en la foto para la IA (0 = sin flash)
   detalleIA: null, // 'bajo' o 'alto'
   fotoPrueba: null, // fecha de la última "Probar foto"
@@ -54,19 +53,9 @@ const app = {
   ultimaImagen: 0,
   imagenesSegundo: 0,
   urlImagen: null,
-  distancias: [], // [fecha, cm] del ultrasónico, para ver si salta
 };
 
 const manejo = () => app.control.estado === 'tuyo';
-
-// Si en 15 s el ultrasónico midió valores que se separan más de 3 cm, está recibiendo ecos raros
-function saltoUltrasonico() {
-  const v = app.distancias.map(([, d]) => d);
-  if (v.length < 4) return null;
-  const min = Math.min(...v);
-  const max = Math.max(...v);
-  return max - min > 3 ? { min, max } : null;
-}
 
 let ws = null;
 let esperaReconexion = 1000;
@@ -136,7 +125,7 @@ function manejar(m) {
       app.flashFoto = m.flashFoto ?? app.flashFoto;
       app.detalleIA = m.detalleIA ?? app.detalleIA;
       app.fotoPrueba = m.fotoPrueba || app.fotoPrueba;
-      recibirAjustes(m.umbralCamara ?? app.umbralCamara, m.zona || app.zona, m.ultraUmbral ?? app.ultraUmbral);
+      recibirAjustes(m.umbralCamara ?? app.umbralCamara, m.zona || app.zona);
       pintarTodo();
       break;
     }
@@ -160,7 +149,7 @@ function manejar(m) {
     case 'ajustes':
       app.flashFoto = m.flashFoto ?? app.flashFoto;
       app.detalleIA = m.detalleIA ?? app.detalleIA;
-      recibirAjustes(m.umbralCamara, m.zona, m.ultraUmbral ?? app.ultraUmbral);
+      recibirAjustes(m.umbralCamara, m.zona);
       cal.historia = []; // los % cambian con la zona nueva
       pintarEstado();
       pintarCal();
@@ -180,7 +169,6 @@ function manejar(m) {
       break;
     case 'calibracion':
       app.calibracion = m.calibracion;
-      app.distancias = [];
       dep.calibrando = 0;
       pintarCal();
       avisar('Calibración lista: la caneca ya conoce su bandeja vacía.', 'ok');
@@ -490,11 +478,9 @@ function textoDeteccion(e) {
   if (e.vaciar) return ['Modo vaciar', `La bandeja está de canto hacia ${NOMBRE_VACIAR[e.vaciarLado] || 'un lado'}. Toca Nivelar al terminar.`];
   if (e.pausa) return ['En pausa', 'No clasifica sola. Toca Reanudar.'];
   if (e.mano) return ['Una mano', 'La IA vio una mano: la bandeja no se mueve hasta que la quiten.'];
-  if (e.esperando && (e.ultra || e.cam)) return ['Ya se clasificó', 'Espera a que la bandeja quede libre.'];
-  if (e.ultra && e.cam) return ['Llegó algo', 'Lo ven el ultrasónico y la cámara; la IA decide qué es.'];
-  if (e.ultra) return ['Llegó algo', 'Lo ve el ultrasónico (la cámara no); la IA decide qué es.'];
-  if (e.cam) return ['Llegó algo', 'Lo ve la cámara (el ultrasónico no); la IA decide qué es.'];
-  return ['Bandeja libre', 'Ni el ultrasónico ni la cámara ven algo.'];
+  if (e.esperando && e.cam) return ['Ya se clasificó', 'Espera a que la bandeja quede libre.'];
+  if (e.cam) return ['Llegó algo', 'Lo ve la cámara; la IA decide qué es.'];
+  return ['Bandeja libre', 'La cámara no ve nada nuevo en la bandeja.'];
 }
 
 function pintarMedidor(relleno, raya, valor, umbral, escala) {
@@ -505,25 +491,6 @@ function pintarMedidor(relleno, raya, valor, umbral, escala) {
 function pintarEstado() {
   const e = app.estado;
   if (!e) return;
-  // Ultrasónico: cuánto más cerca que la bandeja vacía
-  const umbralCm = e.ultraUmbral ?? app.ultraUmbral ?? 1.5;
-  $('#s-ultra').dataset.ve = e.ultra ? 'si' : 'no';
-  if (e.dist === null || e.dist === undefined) {
-    $('#s-dist').textContent = '—';
-    $('#s-dist-sub').textContent = 'Sin medida: revisa los cables del sensor.';
-    pintarMedidor('#m-ultra', '#m-ultra-raya', 0, umbralCm, umbralCm * 3);
-  } else if (!e.vacia) {
-    $('#s-dist').textContent = `${coma(e.dist)} cm`;
-    $('#s-dist-sub').textContent = 'Midiendo la bandeja vacía…';
-    pintarMedidor('#m-ultra', '#m-ultra-raya', 0, umbralCm, umbralCm * 3);
-  } else {
-    const dif = e.vacia - e.dist;
-    $('#s-dist').textContent = `${coma(e.dist)} cm`;
-    $('#s-dist-sub').textContent = dif >= 0
-      ? `${coma(dif)} cm más cerca que la bandeja vacía (${coma(e.vacia)} cm). Hay residuo desde ${coma(umbralCm)} cm.`
-      : `${coma(-dif)} cm más lejos que la bandeja vacía (${coma(e.vacia)} cm).${dif < -2 ? ' Revisa que la bandeja esté a nivel y el sensor derecho.' : ''}`;
-    pintarMedidor('#m-ultra', '#m-ultra-raya', dif, umbralCm, Math.max(5, umbralCm * 3));
-  }
   // Cámara
   const umbralCam = app.umbralCamara ?? 3;
   $('#s-cam').dataset.ve = e.cam ? 'si' : 'no';
@@ -540,7 +507,7 @@ function pintarEstado() {
   const [det, detSub] = textoDeteccion(e);
   $('#s-detec').textContent = det;
   $('#s-detec-sub').textContent = detSub;
-  $('#s-det').dataset.ve = e.atascado ? 'alerta' : e.ultra || e.cam ? 'si' : 'no';
+  $('#s-det').dataset.ve = e.atascado ? 'alerta' : e.cam ? 'si' : 'no';
   $('#s-servo').textContent = `${e.servo}°`;
   $('#s-modo').textContent = e.servo === 90 ? 'A nivel' : e.servo >= 140 ? 'Inclinada hacia aprovechables' : e.servo <= 40 ? 'Inclinada hacia no aprovechables' : 'Moviéndose';
   $('#s-bandeja').style.transform = `rotate(${limitar((e.servo || 90) - 90, -65, 65)}deg)`;
@@ -561,17 +528,6 @@ function pintarEstado() {
       'Cárgale el programa de Caneca3 › 3_codigo › esp32cam con el Arduino IDE.'
     : '';
 
-  // El ultrasónico es confiable si sus medidas no saltan: guardar las de los últimos 15 s, solo con la
-  // bandeja libre y a nivel (si alguien pone un residuo, que la distancia cambie es lo normal)
-  const bandejaLibre = e.servo === 90 && !e.ultra && !e.cam && !e.esperando && !e.mano && !e.atascado;
-  if (!bandejaLibre) app.distancias = [];
-  else if (Number.isFinite(e.dist) && e.dist > 0) {
-    app.distancias.push([Date.now(), e.dist]);
-    app.distancias = app.distancias.filter(([t]) => Date.now() - t < 15000);
-  }
-  const salto = saltoUltrasonico();
-  if (salto) $('#s-dist-sub').textContent += ` Las medidas saltan entre ${coma(salto.min)} y ${coma(salto.max)} cm: apunta el sensor derecho al centro de la bandeja.`;
-
   // La página de la caneca (Wi-Fi) también se abre desde la misma red, por su IP
   const pagina = $('#e-pagina');
   pagina.replaceChildren('Página de la caneca: ');
@@ -584,8 +540,6 @@ function pintarEstado() {
     pagina.append(enlace, ' desde tu misma red Wi-Fi, o');
   }
   pagina.append(' http://192.168.4.1 conectado a la red Caneca-IoT (siempre prendida; no tiene internet, así que en el celular apágale la conexión automática).');
-
-  if (panelActual === 'calibrar') pintarUltraCal();
 
   $('#btn-pausa').textContent = e.pausa ? 'Reanudar' : 'Pausar';
   $('#btn-pausa').title = e.pausa ? 'Vuelve a clasificar sola' : 'Deja de clasificar sola (los botones siguen funcionando)';
@@ -1022,7 +976,6 @@ const dep = {
 const cal = {
   umbral: null, // lo que estás probando (sin guardar)
   zona: null,
-  ultra: null, // cm del ultrasónico
   historia: [], // [fecha, % de la cámara] de los últimos 30 s, para ver hasta dónde sube
   editarZona: false,
   arrastre: null,
@@ -1031,19 +984,17 @@ const cal = {
 const mismaZona = (a, b) => Boolean(a && b) && LADOS_ZONA.every((k) => a[k] === b[k]);
 function hayCambios() {
   if (cal.umbral === null || !cal.zona || app.umbralCamara === null || !app.zona) return false;
-  return cal.umbral !== app.umbralCamara || !mismaZona(cal.zona, app.zona) || (app.ultraUmbral !== null && cal.ultra !== app.ultraUmbral);
+  return cal.umbral !== app.umbralCamara || !mismaZona(cal.zona, app.zona);
 }
 function copiarGuardados() {
   cal.umbral = app.umbralCamara;
   cal.zona = app.zona ? { ...app.zona } : null;
-  cal.ultra = app.ultraUmbral;
 }
 // Si no estabas probando nada, el borrador sigue a lo guardado; si sí, se respeta lo que movías
-function recibirAjustes(umbral, zona, ultra) {
+function recibirAjustes(umbral, zona) {
   const estabaLimpio = !hayCambios();
   app.umbralCamara = umbral;
   app.zona = zona;
-  app.ultraUmbral = ultra ?? app.ultraUmbral;
   if (estabaLimpio || cal.umbral === null) copiarGuardados();
 }
 
@@ -1261,25 +1212,6 @@ function pintarPasos(n) {
   cajaCam.dataset.ve = n.camVe ? 'si' : 'no';
   cajaCam.querySelector('dd').textContent = cam;
 
-  const cajaUltra = $('#dep-paso-ultra');
-  let ultra;
-  if (!Number.isFinite(n.dist) || n.dist <= 0) ultra = 'Sin medida: revisa el sensor y que la bandeja esté a nivel.';
-  else if (!Number.isFinite(n.vacia) || n.vacia <= 0) ultra = `${coma(n.dist)} cm ahora; todavía no tiene la distancia de la bandeja vacía.`;
-  else {
-    const dif = n.vacia - n.dist;
-    ultra = dif >= 0
-      ? `${coma(dif)} cm más cerca que la bandeja vacía; avisa desde ${coma(n.ultraUmbral ?? 1.5)} cm: ${siNo(n.ultraVe)}.`
-      : `Mide ${coma(-dif)} cm más lejos que la bandeja vacía.` +
-        (dif < -2 ? ' Revisa que la bandeja esté horizontal y el sensor derecho; luego calibra otra vez con la bandeja vacía.' : ' Es una variación pequeña.');
-  }
-  const salto = dep.viendoCaptura ? null : saltoUltrasonico();
-  if (salto) {
-    ultra += ` Además sus medidas saltan entre ${coma(salto.min)} y ${coma(salto.max)} cm con la bandeja quieta: ` +
-      'está recibiendo ecos de otra cosa (paredes, el borde de la bandeja o lo que hay debajo). Apúntalo derecho al centro de la bandeja.';
-  }
-  cajaUltra.dataset.ve = n.ultraVe ? 'si' : salto ? 'alerta' : 'no';
-  cajaUltra.querySelector('dd').textContent = ultra;
-
   const cajaRes = $('#dep-paso-res');
   let res;
   if (n.mano) res = 'La IA vio una mano: no se mueve ni vuelve a preguntar hasta que algo se mueva (la mano se va).';
@@ -1287,9 +1219,9 @@ function pintarPasos(n) {
   else if (n.atascado) res = 'Espera a que la bandeja quede libre: si quedó algo encima, sácalo a mano o toca Nivelar.';
   else if (n.pausa) res = 'En pausa: no clasifica sola.';
   else if (n.esperando) res = 'Ya clasificó lo que hay: espera a que la bandeja quede libre.';
-  else if (n.camVe || n.ultraVe) res = `Llegó algo (lo ve ${[n.ultraVe && 'el ultrasónico', n.camVe && 'la cámara'].filter(Boolean).join(' y ')}): toma la foto con flash y la IA decide si va a aprovechables, a no aprovechables, o si no hace nada (una mano o la bandeja vacía).`;
+  else if (n.camVe) res = 'Llegó algo (lo ve la cámara): toma la foto con flash y la IA decide si va a aprovechables, a no aprovechables, o si no hace nada (una mano o la bandeja vacía).';
   else res = 'Bandeja libre: no hace nada. Si pusiste algo y no lo detecta, avísalo en el Historial con "Puse algo y no lo detectó".';
-  cajaRes.dataset.ve = n.atascado ? 'alerta' : n.camVe || n.ultraVe ? 'si' : 'no';
+  cajaRes.dataset.ve = n.atascado ? 'alerta' : n.camVe ? 'si' : 'no';
   cajaRes.querySelector('dd').textContent = res;
 
   const tec = [];
@@ -1340,7 +1272,6 @@ function pintarDeslizadores() {
     $(`#o-${k}`).textContent = `${cal.zona[k]} %`;
   }
   if (cal.umbral !== null) $('#umbral-cam').value = cal.umbral;
-  if (cal.ultra !== null && cal.ultra !== undefined) $('#umbral-ultra').value = cal.ultra;
 }
 
 function pintarGuardar() {
@@ -1351,8 +1282,7 @@ function pintarGuardar() {
   $('#btn-descartar').hidden = !cambios;
   const z = app.zona;
   const actual = z && app.umbralCamara !== null
-    ? `zona de ${z.x0} a ${z.x1} % a lo ancho y de ${z.y0} a ${z.y1} % a lo alto; la cámara avisa desde ${app.umbralCamara} %` +
-      (app.ultraUmbral !== null ? ` y el ultrasónico desde ${coma(app.ultraUmbral)} cm` : '')
+    ? `zona de ${z.x0} a ${z.x1} % a lo ancho y de ${z.y0} a ${z.y1} % a lo alto; la cámara avisa desde ${app.umbralCamara} %`
     : null;
   let texto;
   if (!actual) texto = 'Cargando los ajustes…';
@@ -1442,34 +1372,6 @@ function pintarEstadoCal() {
   }
 }
 
-// Ultrasónico: cuántos cm más cerca que la bandeja vacía está lo que mide ahora, contra la raya
-function pintarUltraCal() {
-  const e = app.estado;
-  const umbral = cal.ultra ?? app.ultraUmbral ?? 1.5;
-  const hay = e && Number.isFinite(e.dist) && Number.isFinite(e.vacia) && e.vacia > 0;
-  const dif = hay ? Math.max(0, e.vacia - e.dist) : null;
-  const escala = Math.max(5, Math.ceil(Math.max(umbral * 2, (dif ?? 0) * 1.2)));
-  $('#ul-relleno').style.width = `${dif === null ? 0 : limitar(dif / escala, 0, 1) * 100}%`;
-  $('#ul-raya').style.left = `${limitar(umbral / escala, 0, 1) * 100}%`;
-  $('#ul-raya-texto').textContent = `${coma(umbral)} cm`;
-  $('#ul-escala').textContent = `${escala} cm`;
-  $('#o-ultra').textContent = `${coma(umbral)} cm`;
-  const ve = dif !== null && dif >= umbral;
-  $('#regla-ultra').dataset.ve = ve ? 'si' : 'no';
-  if (!hay) {
-    $('#ul-ahora').textContent = '—';
-    $('#ul-texto').textContent = 'Esperando la distancia de la bandeja vacía: toca "Calibrar con la bandeja vacía".';
-    $('#ul-veredicto').textContent = '';
-    return;
-  }
-  $('#ul-ahora').textContent = `${coma(dif)} cm`;
-  const lejos = e.vacia - e.dist < 0 ? ` (mide ${coma(e.dist - e.vacia)} cm más lejos)` : '';
-  $('#ul-texto').textContent = `más cerca que la bandeja vacía: mide ${coma(e.dist)} cm y la bandeja vacía está a ${coma(e.vacia)} cm${lejos}.`;
-  let v = ve ? `Con ${coma(umbral)} cm, el ultrasónico avisaría que llegó algo.` : `Con ${coma(umbral)} cm, el ultrasónico diría que la bandeja está libre.`;
-  if (app.ultraUmbral !== null && cal.ultra !== app.ultraUmbral) v += ` Es una prueba: la caneca sigue usando ${coma(app.ultraUmbral)} cm hasta que guardes.`;
-  $('#ul-veredicto').textContent = v;
-}
-
 // Luz de la foto para la IA: se aplica al tocarla (con el control), para poder probarla enseguida
 const NOMBRES_FLASH = { 0: 'Sin flash', 30: 'Flash suave', 60: 'Flash medio', 100: 'Flash fuerte' };
 const nombreFlash = (pct) => NOMBRES_FLASH[pct] || `Flash al ${pct} %`;
@@ -1504,7 +1406,7 @@ function aplicarFotoIA(cambio) {
   if (!manejo()) return irAlPin();
   if (app.umbralCamara === null || !app.zona) return;
   // se mandan los ajustes guardados (no el borrador) con el cambio de la foto
-  mandar({ t: 'ajustes', umbralCamara: app.umbralCamara, zona: { ...app.zona }, ultraUmbral: app.ultraUmbral ?? undefined, flashFoto: app.flashFoto, detalleIA: app.detalleIA, ...cambio });
+  mandar({ t: 'ajustes', umbralCamara: app.umbralCamara, zona: { ...app.zona }, flashFoto: app.flashFoto, detalleIA: app.detalleIA, ...cambio });
 }
 for (const b of $$('#opciones-flash button')) b.addEventListener('click', () => aplicarFotoIA({ flashFoto: Number(b.dataset.flash) }));
 for (const b of $$('#opciones-detalle button')) b.addEventListener('click', () => aplicarFotoIA({ detalleIA: b.dataset.detalle }));
@@ -1524,26 +1426,9 @@ function pintarCalibracion() {
     if (img.getAttribute('src') !== src) img.src = src;
     img.onclick = () => abrirVisor(src, 'Foto de la bandeja vacía que la IA usa para comparar');
   }
-  const usar = $('#btn-usar-sugerido');
-  usar.hidden = true;
   const partes = [];
   if (c) {
     partes.push(`Calibrada a las ${hora(c.fecha)}`.replace(/\.?$/, '.'));
-    if (c.vacia !== null && c.vacia !== undefined) {
-      partes.push(`El ultrasónico mide la bandeja vacía a ${coma(c.vacia)} cm y varía ±${coma(c.desv ?? 0, 2)} cm (${c.validas} de ${c.medidas} medidas).`);
-      if (c.desv > 0.5) partes.push('Varía mucho: apúntalo derecho al centro de la bandeja y calibra otra vez.');
-      if (c.medidas && c.validas < c.medidas * 0.7) partes.push(`No respondió ${c.medidas - c.validas} veces: revisa sus cables.`);
-      if (c.sugerido && c.sugerido !== (cal.ultra ?? app.ultraUmbral)) {
-        usar.hidden = false;
-        usar.textContent = `Usar ${coma(c.sugerido)} cm para el ultrasónico (sugerido)`;
-        usar.onclick = () => {
-          cal.ultra = c.sugerido;
-          pintarCal();
-        };
-      }
-    } else if (c.medidas) {
-      partes.push('El ultrasónico no respondió: revisa Trig, Echo, 5 V y GND.');
-    }
     partes.push(c.camara ? 'La cámara guardó la bandeja vacía.' : 'La cámara no pudo guardar la bandeja vacía.');
   }
   partes.push(app.referencia ? 'La foto es la bandeja vacía que la IA usa para comparar (tócala para verla).' : 'La IA todavía no tiene foto de la bandeja vacía.');
@@ -1560,7 +1445,6 @@ function pintarCal() {
   pintarFotoIA();
   pintarDeslizadores();
   pintarSensibilidad();
-  pintarUltraCal();
   pintarCalibracion();
   pintarGuardar();
   pintarEstadoCal();
@@ -1697,14 +1581,6 @@ $('#umbral-cam').addEventListener('input', (ev) => {
   pintarEstadoCal();
 });
 
-$('#umbral-ultra').addEventListener('input', (ev) => {
-  cal.ultra = Math.round(Number(ev.target.value) * 10) / 10;
-  pintarUltraCal();
-  pintarCalibracion();
-  pintarGuardar();
-  pintarEstadoCal();
-});
-
 $('#btn-zona-sugerida').addEventListener('click', () => ponerZona(ZONA_SUGERIDA));
 
 // --- Mover la zona arrastrando en la imagen (con el dedo, solo con "Mover la zona" prendido)
@@ -1787,7 +1663,7 @@ $('#btn-mover-zona').addEventListener('click', () => {
 $('#btn-ajustes').addEventListener('click', () => {
   if ($('#btn-ajustes').dataset.accion === 'control') return irAlPin();
   if (!hayCambios()) return;
-  mandar({ t: 'ajustes', umbralCamara: cal.umbral, zona: { ...cal.zona }, ...(cal.ultra !== null ? { ultraUmbral: cal.ultra } : {}) });
+  mandar({ t: 'ajustes', umbralCamara: cal.umbral, zona: { ...cal.zona } });
 });
 $('#btn-descartar').addEventListener('click', () => {
   copiarGuardados();
