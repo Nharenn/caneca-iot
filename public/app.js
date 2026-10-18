@@ -1,7 +1,7 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-18.4';
+const VERSION_PAGINA = '2026-10-18.5';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
 const FIRMWARE_ESPERADO = '2026-10-17.9';
 // Zona sugerida para la caja de MDF (en % de la imagen)
@@ -672,7 +672,8 @@ function pintarPrecision() {
   const acierto = p.revisadas ? Math.round((100 * p.aciertos) / p.revisadas) : null;
   $('#p-acierto').textContent = acierto === null ? '—' : `${acierto} %`;
   $('#p-sub').textContent = p.revisadas
-    ? `${p.aciertos} de ${p.revisadas} revisadas fueron al lado correcto o, si era una mano o estaba vacía, no se movieron. Error: ${100 - acierto} %.`
+    ? `${p.aciertos} de ${p.revisadas} revisadas fueron al lado correcto o, si era una mano o estaba vacía, no se movieron. Error: ${100 - acierto} %.` +
+      (p.claseMal ? ` De las que acertaron, ${p.claseMal} ${p.claseMal === 1 ? 'fue' : 'fueron'} con otra clase del mismo lado (por ejemplo, dijo metal y era papel).` : '')
     : 'Marca en el Historial si cada clasificación acertó (Sí / No) y aquí sale el porcentaje de error.';
   $('#p-seg-ok').style.width = `${acierto ?? 0}%`;
   $('#p-seg-mal').style.width = `${acierto === null ? 0 : 100 - acierto}%`;
@@ -730,8 +731,10 @@ function pintarPrecision() {
     const li = document.createElement('li');
     const veces = document.createElement('b');
     veces.textContent = `${n}×`;
-    const real = era === 'vacio' ? 'estaba vacía' : `era ${NOMBRE_REAL[era] || NOMBRE_GRUPO[era] || era}`;
-    li.append(veces, ` dijo ${NOMBRE_GRUPO[dijo] || dijo} y ${real}`);
+    const real = era === 'vacio' ? 'estaba vacía' : `era ${NOMBRE_REAL[era] || NOMBRE_GRUPO[era] || NOMBRE_CLASE[era] || era}`;
+    // dijo una clase y era otra del mismo lado: la bandeja igual acertó
+    const mismoLado = !NOMBRE_GRUPO[dijo] && NOMBRE_CLASE[dijo] && NOMBRE_CLASE[era] ? ' (fue al lado correcto)' : '';
+    li.append(veces, ` dijo ${NOMBRE_GRUPO[dijo] || NOMBRE_CLASE[dijo] || dijo} y ${real}${mismoLado}`);
     errores.append(li);
   }
 }
@@ -828,6 +831,18 @@ const OPCIONES_REVISAR = [
   ['vacio', 'Estaba vacía'],
 ];
 let revisionAbierta = null; // id de la clasificación en la que se tocó "No"
+let revisionOtra = null; // id de la clasificación en la que se tocó "Era otro aprovechable": falta elegir cuál
+
+// Las clases que van al mismo lado de la bandeja (el servidor manda el lado de cada una)
+const ladoDeClase = (c) => c.lado || (c.caneca === 'blanca' ? 'aprovechables' : 'no_aprovechables');
+const clasesDelLado = (lado, menos) =>
+  app.clases.filter((c) => c.id !== menos && !sinResiduo(c.id) && ladoDeClase(c) === lado);
+// Fue al lado correcto, pero la persona marcó que era otra clase (dijo metal y era papel)
+const otraClaseMismoLado = (evento, r) => r.ok && r.real !== evento.clase && Boolean(NOMBRE_CLASE[r.real]) && !sinResiduo(r.real);
+const cerrarRevision = () => {
+  revisionAbierta = null;
+  revisionOtra = null;
+};
 
 // Botones para decir si la caneca acertó (solo quien tiene el control)
 function controlesRevision(evento) {
@@ -836,25 +851,52 @@ function controlesRevision(evento) {
   caja.className = 'revisar';
   if (evento.revision && revisionAbierta !== evento.id) {
     const r = evento.revision;
-    caja.append(chip(r.ok ? 'Acertó' : `Error: era ${NOMBRE_REAL[r.real] || NOMBRE_CLASE[r.real] || r.real}`, r.ok ? 'ok' : 'mal'));
+    if (otraClaseMismoLado(evento, r)) caja.append(chip(`Era ${NOMBRE_CLASE[r.real]}: fue al lado correcto`, 'medio'));
+    else caja.append(chip(r.ok ? 'Acertó' : `Error: era ${NOMBRE_REAL[r.real] || NOMBRE_CLASE[r.real] || r.real}`, r.ok ? 'ok' : 'mal'));
     if (manejo()) caja.append(boton('Cambiar', 'boton-texto', () => mandar({ t: 'revisar', id: evento.id, real: '' })));
     return caja;
   }
   if (!manejo()) return null;
+  const lado = evento.lado;
+  const otras = sinResiduo(evento.clase) || !NOMBRE_REAL[lado] ? [] : clasesDelLado(lado, evento.clase);
+  if (revisionOtra === evento.id) {
+    // "Era otro aprovechable": la persona elige cuál era (papel, cartón...)
+    const pregunta = document.createElement('span');
+    pregunta.className = 'revisar-pregunta';
+    pregunta.textContent = '¿Cuál era?';
+    caja.append(pregunta);
+    for (const c of otras) {
+      caja.append(boton(c.nombre, 'boton boton-chico', () => {
+        cerrarRevision();
+        mandar({ t: 'revisar', id: evento.id, real: c.id });
+      }));
+    }
+    caja.append(boton('Volver', 'boton-texto', () => {
+      revisionOtra = null;
+      pintarHistorial();
+    }));
+    return caja;
+  }
   if (revisionAbierta === evento.id) {
     const pregunta = document.createElement('span');
     pregunta.className = 'revisar-pregunta';
     pregunta.textContent = '¿Qué era?';
     caja.append(pregunta);
+    if (otras.length) {
+      caja.append(boton(`Era otro ${NOMBRE_REAL[lado]}`, 'boton boton-chico', () => {
+        revisionOtra = evento.id;
+        pintarHistorial();
+      }));
+    }
     for (const [valor, texto] of OPCIONES_REVISAR) {
       if (valor === grupoDecision(evento)) continue; // eso fue lo que dijo: no sería un error
       caja.append(boton(texto, 'boton boton-chico', () => {
-        revisionAbierta = null;
+        cerrarRevision();
         mandar({ t: 'revisar', id: evento.id, real: valor });
       }));
     }
     caja.append(boton('Cancelar', 'boton-texto', () => {
-      revisionAbierta = null;
+      cerrarRevision();
       pintarHistorial();
     }));
     return caja;
@@ -867,6 +909,7 @@ function controlesRevision(evento) {
     boton('Sí', 'boton boton-chico boton-si', () => mandar({ t: 'revisar', id: evento.id, real: 'bien' })),
     boton('No', 'boton boton-chico boton-no', () => {
       revisionAbierta = evento.id;
+      revisionOtra = null;
       pintarHistorial();
     }),
   );

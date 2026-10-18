@@ -17,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-18.4';
+const VERSION = '2026-10-18.5';
 
 const fs = require('fs');
 const os = require('os');
@@ -333,6 +333,7 @@ function precision() {
   const revs = Object.values(datos.revisiones);
   const porDijo = {};
   const errores = {};
+  let claseMal = 0; // fue al lado correcto, pero la persona marcó otra clase ("Era otro aprovechable": metal → papel)
   for (const r of revs) {
     const dijo = grupoDe(r.dijo, r.lado);
     const real = SIN_RESIDUO.includes(r.real) ? r.real : r.ladoReal;
@@ -340,6 +341,10 @@ function precision() {
     porDijo[dijo].n++;
     if (r.ok) porDijo[dijo].ok++;
     else errores[`${dijo}>${real}`] = (errores[`${dijo}>${real}`] || 0) + 1;
+    if (r.ok && r.real !== r.dijo && CLASE[r.real] && !SIN_RESIDUO.includes(r.real)) {
+      claseMal++;
+      errores[`${r.dijo}>${r.real}`] = (errores[`${r.dijo}>${r.real}`] || 0) + 1;
+    }
   }
   const clasificaciones = datos.eventos.filter((e) => e.tipo === 'clasificacion' && e.clase !== 'error');
   // Detección de la cámara: de los avisos automáticos, cuántos tenían algo de verdad (un residuo o una mano) y
@@ -356,6 +361,7 @@ function precision() {
   return {
     revisadas: revs.length,
     aciertos: revs.filter((r) => r.ok).length,
+    claseMal,
     porDijo,
     errores: Object.entries(errores).sort((a, b) => b[1] - a[1]).slice(0, 6),
     sinRevisar: clasificaciones.filter((e) => !e.revision).length,
@@ -381,7 +387,7 @@ function resumen() {
     calibracion: datos.calibracion,
     referencia: fechaReferencia,
     lados: LADO_CANECA,
-    clases: TABLA_CLASES.map(({ id, nombre, caneca }) => ({ id, nombre, caneca })),
+    clases: TABLA_CLASES.map(({ id, nombre, caneca }) => ({ id, nombre, caneca, lado: ladoPara(id) })),
     estadisticas: estadisticas(),
     capturas: capturas.slice(0, MAX_CAPTURAS),
     tiposCaptura: TIPOS_CAPTURA,

@@ -2068,6 +2068,12 @@ li[data-tipo='captura'] .historial-que strong::before {
   color: var(--rojo);
 }
 
+/* Acertó el lado, pero era otra clase (dijo metal y era papel) */
+.chip[data-tipo='medio'] {
+  background: var(--amarillo-suave);
+  color: var(--tinta);
+}
+
 .revisar {
   display: flex;
   flex-wrap: wrap;
