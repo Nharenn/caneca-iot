@@ -17,7 +17,7 @@
 
 // La página (public/app.js) lleva esta misma versión; si no coinciden, el monitor lo avisa (por ejemplo:
 // servidor viejo todavía prendido). El programa de la placa tiene la suya (FIRMWARE_ESPERADO en app.js).
-const VERSION = '2026-10-17.12';
+const VERSION = '2026-10-17.13';
 
 const fs = require('fs');
 const os = require('os');
@@ -671,8 +671,8 @@ function manejarTextoEsp(texto) {
       actualizarEvento(ev);
     }
   } else if (m.t === 'aviso' && typeof m.msg === 'string') {
-    // por ejemplo: la cámara vio que el residuo no cayó de la bandeja
-    registrarEvento({ tipo: 'aviso', msg: m.msg.slice(0, 160) });
+    // el aviso de la placa "el residuo no cayó" ya no va al historial (Nharenn pidió quitarlo de la página)
+    if (!/no cayó/i.test(m.msg)) registrarEvento({ tipo: 'aviso', msg: m.msg.slice(0, 160) });
   } else if (m.t === 'depuracion') {
     // los números de la depuración (llegan justo antes de cada cuadro 'D')
     const n = {};
@@ -848,21 +848,6 @@ function revisarClasificacion(ws, m) {
   actualizarEvento(ev);
 }
 
-// La placa dijo "no cayó" (o "cayó") y la persona vio otra cosa: se corrige en el historial y en el % de caídas
-function corregirCaida(ws, m) {
-  const ev = datos.eventos.find((e) => e.id === Number(m.id) && e.tipo === 'clasificacion');
-  if (!ev || typeof ev.cayo !== 'boolean' || typeof m.cayo !== 'boolean') {
-    return enviar(ws, { t: 'error', msg: 'No se puede corregir esa caída.' });
-  }
-  if (ev.cayo === m.cayo) return;
-  if (ev.cayoPlaca === undefined) ev.cayoPlaca = ev.cayo; // lo que dijo la placa, la primera vez
-  datos.caidas[ev.cayo ? 'si' : 'no'] = Math.max(0, datos.caidas[ev.cayo ? 'si' : 'no'] - 1);
-  datos.caidas[m.cayo ? 'si' : 'no']++;
-  ev.cayo = m.cayo;
-  if (ev.cayo === ev.cayoPlaca) delete ev.cayoPlaca;
-  actualizarEvento(ev);
-}
-
 function manejarMonitor(ws, texto) {
   let m;
   try {
@@ -890,9 +875,7 @@ function manejarMonitor(ws, texto) {
   } else if (m.t === 'revisar') {
     if (!tieneControl(ws)) return;
     revisarClasificacion(ws, m);
-  } else if (m.t === 'corregirCaida') {
-    if (!tieneControl(ws)) return;
-    corregirCaida(ws, m);
+
   } else if (m.t === 'reiniciar') {
     if (!tieneControl(ws)) return;
     datos.conteos = Object.fromEntries(CLASES.map((c) => [c, 0]));

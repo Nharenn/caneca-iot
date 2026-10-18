@@ -2059,22 +2059,6 @@ li[data-tipo='captura'] .historial-que strong::before {
   font-weight: 620;
 }
 
-.chips.caida {
-  align-items: center;
-  column-gap: 0.5rem;
-}
-
-.chips.caida .boton-texto {
-  padding: 0.125rem 0;
-  font-size: 0.8125rem;
-}
-
-.caida-nota {
-  flex-basis: 100%;
-  color: var(--tinta-2);
-  font-size: 0.8125rem;
-}
-
 .chip[data-tipo='ok'] {
   background: var(--verde-suave);
   color: var(--verde);
@@ -2163,8 +2147,8 @@ li[data-tipo='vacio'] .historial-que strong {
   background: var(--rojo);
 }
 
-.cifras-5 {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+.cifras-precision {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 0;
   border: 1px solid var(--linea);
 }
@@ -2206,7 +2190,7 @@ li[data-tipo='vacio'] .historial-que strong {
 }
 
 @media (max-width: 900px) {
-  .cifras-5 {
+  .cifras-precision {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

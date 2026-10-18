@@ -1,7 +1,7 @@
 'use strict';
 
 // La página y el servidor van juntos: server.js tiene la misma versión. Si no coinciden, se avisa arriba.
-const VERSION_PAGINA = '2026-10-17.12';
+const VERSION_PAGINA = '2026-10-17.13';
 // El programa de la placa que espera esta página (la calibración necesita este o uno más nuevo)
 const FIRMWARE_ESPERADO = '2026-10-17.9';
 // Zona sugerida para la caja de MDF (en % de la imagen)
@@ -195,7 +195,7 @@ function manejar(m) {
       pintarFotoIA();
       break;
     case 'eventoActualizado': {
-      // una clasificación que revisaron, o que ya se sabe si cayó
+      // una clasificación que revisaron
       const i = app.eventos.findIndex((e) => e.id === m.evento.id);
       if (i >= 0) app.eventos[i] = m.evento;
       if (m.estadisticas) app.estadisticas = m.estadisticas;
@@ -486,7 +486,7 @@ function pintarLados() {
 const NOMBRE_VACIAR = { aprovechables: 'aprovechables', no_aprovechables: 'no aprovechables' };
 
 function textoDeteccion(e) {
-  if (e.atascado) return ['El residuo no cayó', 'Sácalo a mano o toca Nivelar.'];
+  if (e.atascado) return ['Esperando que quede libre', 'Si quedó algo en la bandeja, sácalo a mano o toca Nivelar.'];
   if (e.vaciar) return ['Modo vaciar', `La bandeja está de canto hacia ${NOMBRE_VACIAR[e.vaciarLado] || 'un lado'}. Toca Nivelar al terminar.`];
   if (e.pausa) return ['En pausa', 'No clasifica sola. Toca Reanudar.'];
   if (e.mano) return ['Una mano', 'La IA vio una mano: la bandeja no se mueve hasta que la quiten.'];
@@ -730,9 +730,6 @@ function pintarPrecision() {
   const vacias = p.sinResiduo?.vacio || 0;
   $('#p-falsos').textContent = fmt.format(manos + vacias);
   $('#p-falsos-sub').textContent = `${manos} ${manos === 1 ? 'mano' : 'manos'} y ${vacias} con la bandeja vacía: la IA no movió la bandeja`;
-  const caidas = (p.caidas?.si || 0) + (p.caidas?.no || 0);
-  $('#p-cayo').textContent = caidas ? `${pct(p.caidas.si, caidas)} %` : '—';
-  $('#p-cayo-sub').textContent = caidas ? `${p.caidas.si} de ${caidas} veces cayó a la primera o en el reintento` : 'se sabe con el programa 2026-10-17.6';
   $('#p-nodetecto').textContent = fmt.format(p.noDetecto || 0);
 
   const lista = $('#p-pordijo');
@@ -907,46 +904,14 @@ function controlesRevision(evento) {
   return caja;
 }
 
-// Lo que midió la placa al revisar si cayó (programa 2026-10-17.9 o más nuevo)
-function textoVerificacion(e) {
-  const v = e.verif;
-  if (!v) return null;
-  const partes = [];
-  if (v.residuo !== null && v.residuo !== undefined) partes.push(`la cámara seguía viendo el ${v.residuo} % del residuo`);
-  else if (v.zona !== null && v.zona !== undefined) partes.push(`la cámara veía distinto el ${v.zona} % de la bandeja`);
-  if (v.cm !== null && v.cm !== undefined && v.vacia) partes.push(`el ultrasónico medía ${coma(v.cm)} cm (vacía ${coma(v.vacia)})`);
-  return partes.length ? `Al revisar, ${partes.join(' y ')}.` : null;
-}
-
-// Si el residuo cayó, y para corregirlo cuando la placa se equivocó (cuenta en el % de caídas de Análisis)
-function controlesCaida(evento) {
-  if (typeof evento.cayo !== 'boolean') return null;
-  const caja = document.createElement('div');
-  caja.className = 'chips caida';
-  const corregido = typeof evento.cayoPlaca === 'boolean';
-  caja.append(chip(evento.cayo ? (corregido ? 'Cayó (lo corregiste)' : 'Cayó') : corregido ? 'No cayó (lo corregiste)' : 'No cayó',
-    evento.cayo ? 'ok' : 'mal'));
-  if (manejo()) {
-    if (corregido) {
-      caja.append(boton('Deshacer', 'boton-texto', () => mandar({ t: 'corregirCaida', id: evento.id, cayo: evento.cayoPlaca })));
-    } else if (!evento.cayo) {
-      caja.append(boton('Sí cayó', 'boton-texto', () => mandar({ t: 'corregirCaida', id: evento.id, cayo: true })));
-    }
-  }
-  const texto = !evento.cayo || corregido ? textoVerificacion(evento) : null;
-  if (texto) {
-    const nota = document.createElement('small');
-    nota.className = 'caida-nota';
-    nota.textContent = texto;
-    caja.append(nota);
-  }
-  return caja;
-}
+// El historial no muestra si el residuo cayó (Nharenn lo pidió el 17 oct): tampoco el aviso de la placa
+const visibleEnHistorial = (e) => !(e.tipo === 'aviso' && /no cayó/i.test(e.msg || ''));
 
 function pintarHistorial() {
   const lista = $('#historial');
   lista.replaceChildren();
-  for (const evento of app.eventos) {
+  const eventos = app.eventos.filter(visibleEnHistorial);
+  for (const evento of eventos) {
     const fila = document.createElement('li');
     fila.dataset.tipo = tipoEvento(evento);
 
@@ -962,7 +927,6 @@ function pintarHistorial() {
     const partes = [
       NOMBRE_ORIGEN[evento.origen],
       evento.ms ? `la IA tardó ${coma(evento.ms / 1000)} s` : null,
-      evento.intentos > 1 ? `inclinó ${evento.intentos} veces` : null,
     ].filter(Boolean);
     if (evento.clase === 'error' && evento.nota) partes.push(evento.nota);
     if (partes.length) {
@@ -971,8 +935,6 @@ function pintarHistorial() {
       que.append(detalle);
     }
     if (evento.tipo === 'clasificacion') {
-      const chips = controlesCaida(evento);
-      if (chips) que.append(chips);
       const revisar = controlesRevision(evento);
       if (revisar) que.append(revisar);
     }
@@ -988,7 +950,7 @@ function pintarHistorial() {
     }
     lista.append(fila);
   }
-  $('#historial-vacio').hidden = app.eventos.length > 0;
+  $('#historial-vacio').hidden = eventos.length > 0;
   const p = app.estadisticas.precision;
   $('#historial-resumen').textContent = !p
     ? 'Toca Sí o No en cada clasificación para decir si la caneca acertó.'
@@ -1323,7 +1285,7 @@ function pintarPasos(n) {
   let res;
   if (n.mano) res = 'La IA vio una mano: no se mueve ni vuelve a preguntar hasta que algo se mueva (la mano se va).';
   else if (n.vaciar) res = 'Modo vaciar: no clasifica hasta que toques Nivelar.';
-  else if (n.atascado) res = 'El residuo no cayó al inclinar: sácalo a mano o toca Nivelar.';
+  else if (n.atascado) res = 'Espera a que la bandeja quede libre: si quedó algo encima, sácalo a mano o toca Nivelar.';
   else if (n.pausa) res = 'En pausa: no clasifica sola.';
   else if (n.esperando) res = 'Ya clasificó lo que hay: espera a que la bandeja quede libre.';
   else if (n.camVe || n.ultraVe) res = `Llegó algo (lo ve ${[n.ultraVe && 'el ultrasónico', n.camVe && 'la cámara'].filter(Boolean).join(' y ')}): toma la foto con flash y la IA decide si va a aprovechables, a no aprovechables, o si no hace nada (una mano o la bandeja vacía).`;
