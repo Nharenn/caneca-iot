@@ -84,7 +84,7 @@ node herramientas/simular-caneca.js   # (otra terminal) una caneca de mentira, s
 | Archivo | Para qué |
 |---|---|
 | `server.js` | Servidor: monitor, WebSockets con la placa, control con fila, depuración y consulta a Gemini |
-| `public/` | La página del monitor (`index.html`, `app.js`, `estilos.css`) |
+| `public/` | La página del monitor (`index.html`, `app.js`, `estilos.css`) y su ícono (`favicon.svg`, `.png`, `.ico`) |
 | `clases.json` | Qué reconoce la IA y a qué caneca va cada cosa |
 | `herramientas/simular-caneca.js` | Simula la placa para probar sin hardware |
 | `.env.example` | La configuración, sin claves |
