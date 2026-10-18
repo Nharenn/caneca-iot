@@ -13,7 +13,7 @@ const path = require('path');
 require('dotenv').config({ quiet: true, path: path.join(__dirname, '..', '.env') });
 const WebSocket = require('ws');
 
-const VERSION = '2026-10-18.2'; // la del programa de la placa
+const VERSION = '2026-10-18.3'; // la del programa de la placa
 const base = (process.argv[2] || `ws://localhost:${process.env.PORT || process.env.PUERTO || 3000}`).replace(/\/$/, '');
 const token = encodeURIComponent(process.env.TOKEN_DISPOSITIVO || '');
 const foto = fs.readFileSync(path.join(__dirname, 'bandeja.jpg'));
@@ -38,7 +38,7 @@ function mandarEstado() {
   const camPct = ultra ? 9 : 1; // % de la bandeja distinto a la foto de la bandeja vacía
   ws.send(JSON.stringify({
     t: 'estado', ultra, dist, vacia: 23.7, ultraUmbral: placa.ultraUmbral, cam: ultra, camPct, atascado: false, esperando: false, mano: placa.mano,
-    pausa, flash, servo, vaciar: Boolean(vaciar), vaciarLado: vaciar, rssi: -58, ip: '192.168.1.50', fw: VERSION, redPropia: false, modo: 'online',
+    pausa, flash, servo, vaciar: Boolean(vaciar), vaciarLado: vaciar, rssi: -58, ip: '192.168.1.50', fw: VERSION, modo: 'online',
   }));
 }
 

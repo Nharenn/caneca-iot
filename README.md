@@ -91,4 +91,4 @@ El CDN de Hostinger guarda `app.js` y `estilos.css`; por eso el servidor arma la
 Los datos (conteos, historial, revisiones, fotos y capturas) se guardan, en el hosting, en `~/caneca-datos` (fuera de
 la carpeta del programa, para que no se borren al volver a desplegar; `/api/salud` dice `"fueraDelPrograma": true`).
 En el Mac quedan en `datos/`. La variable `DIR_DATOS` cambia la carpeta.
-La página y el servidor llevan la misma versión (`2026-10-18.1`). El programa de la placa va por su cuenta (`2026-10-18.2`; la página pide al menos la `2026-10-17.9`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
+La página y el servidor llevan la misma versión (`2026-10-18.2`). El programa de la placa va por su cuenta (`2026-10-18.3`; la página pide al menos la `2026-10-17.9`): si la placa tiene uno más viejo, el monitor lo avisa en Sensores y en Calibrar.
